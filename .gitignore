@@ -32,6 +32,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+
+# Google Play service account key (secreto — subir via EAS secrets o local only)
+google-play-key.json
 
 # typescript
 *.tsbuildinfo
