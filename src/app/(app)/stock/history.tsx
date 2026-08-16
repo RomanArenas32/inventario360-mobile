@@ -2,13 +2,15 @@ import {
   View,
   Text,
   FlatList,
+  TextInput,
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, TrendingUp, TrendingDown, Sliders } from 'lucide-react-native';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, TrendingUp, TrendingDown, Sliders, Search } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import type { StockMovement, StockMovementType, PaginatedResult } from '@/lib/types';
 
@@ -36,6 +38,35 @@ function TypeBadge({ type }: { type: StockMovementType }) {
   );
 }
 
+// ─── Filter chip ──────────────────────────────────────────────────────────────
+
+function Chip({
+  label,
+  active,
+  color,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  color?: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      className={`px-3.5 py-1.5 rounded-full border mr-2 ${
+        active ? 'border-transparent' : 'bg-white border-gray-200'
+      }`}
+      style={active ? { backgroundColor: color ?? '#208AEF' } : {}}
+      activeOpacity={0.7}
+    >
+      <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-600'}`}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Movement row ─────────────────────────────────────────────────────────────
 
 function MovementRow({ item }: { item: StockMovement }) {
@@ -50,6 +81,7 @@ function MovementRow({ item }: { item: StockMovement }) {
     minute: '2-digit',
   });
 
+  const meta = TYPE_META[item.type];
   const delta =
     item.type === 'entry'
       ? `+${item.quantity}`
@@ -58,7 +90,7 @@ function MovementRow({ item }: { item: StockMovement }) {
       : `=${item.quantity}`;
 
   return (
-    <View className="px-4 py-3.5 border-b border-gray-100">
+    <View className="px-4 py-3.5 border-b border-gray-100 bg-white">
       <View className="flex-row items-start justify-between mb-1.5">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
@@ -68,7 +100,7 @@ function MovementRow({ item }: { item: StockMovement }) {
             <Text className="text-xs text-gray-400 font-mono mt-0.5">{item.product.code}</Text>
           ) : null}
         </View>
-        <Text className="text-sm font-bold text-gray-900">{delta}</Text>
+        <Text className="text-sm font-bold" style={{ color: meta.text }}>{delta}</Text>
       </View>
 
       <View className="flex-row items-center gap-2 flex-wrap">
@@ -93,19 +125,48 @@ function MovementRow({ item }: { item: StockMovement }) {
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function useDebounce(value: string, delay: number): string {
+  const [debounced, setDebounced] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setDebounced(value), delay);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [value, delay]);
+
+  return debounced;
+}
+
+function buildUrl(offset: number, type: FilterType, search: string): string {
+  const params = new URLSearchParams({ limit: '20', offset: String(offset) });
+  if (type !== 'all') params.set('type', type);
+  if (search.trim()) params.set('search', search.trim());
+  return `/stock-movements?${params.toString()}`;
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 const LIMIT = 20;
 
+type FilterType = StockMovementType | 'all';
+
 export default function StockHistoryScreen() {
   const router = useRouter();
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
-      queryKey: ['stock-movements'],
+      queryKey: ['stock-movements', filterType, debouncedSearch],
       queryFn: ({ pageParam = 0 }) =>
         api.get<PaginatedResult<StockMovement>>(
-          `/stock-movements?limit=${LIMIT}&offset=${pageParam as number}`,
+          buildUrl(pageParam as number, filterType, debouncedSearch),
         ),
       initialPageParam: 0,
       getNextPageParam: (last) =>
@@ -117,14 +178,52 @@ export default function StockHistoryScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="flex-row items-center gap-3 px-4 py-4 border-b border-gray-100 bg-white">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft size={22} color="#374151" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-900">Historial de movimientos</Text>
+      <View className="px-4 py-4 border-b border-gray-100 bg-white">
+        <View className="flex-row items-center gap-3 mb-3">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <ArrowLeft size={22} color="#374151" />
+          </TouchableOpacity>
+          <Text className="text-lg font-semibold text-gray-900">Historial de movimientos</Text>
+        </View>
+
+        {/* Search */}
+        <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 mb-3">
+          <Search size={15} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 py-2.5 px-2 text-sm text-gray-900"
+            placeholder="Buscar producto..."
+            placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
+            clearButtonMode="while-editing"
+          />
+        </View>
+
+        {/* Type filter chips */}
+        <View className="flex-row">
+          <Chip label="Todos" active={filterType === 'all'} onPress={() => setFilterType('all')} />
+          <Chip
+            label="Entradas"
+            active={filterType === 'entry'}
+            color="#16A34A"
+            onPress={() => setFilterType('entry')}
+          />
+          <Chip
+            label="Salidas"
+            active={filterType === 'exit'}
+            color="#DC2626"
+            onPress={() => setFilterType('exit')}
+          />
+          <Chip
+            label="Ajustes"
+            active={filterType === 'adjustment'}
+            color="#2563EB"
+            onPress={() => setFilterType('adjustment')}
+          />
+        </View>
       </View>
 
       {isLoading ? (
@@ -155,7 +254,11 @@ export default function StockHistoryScreen() {
           }
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center py-20">
-              <Text className="text-gray-400 text-sm">Sin movimientos registrados</Text>
+              <Text className="text-gray-400 text-sm">
+                {search || filterType !== 'all'
+                  ? 'Sin resultados para esta búsqueda'
+                  : 'Sin movimientos registrados'}
+              </Text>
             </View>
           }
         />

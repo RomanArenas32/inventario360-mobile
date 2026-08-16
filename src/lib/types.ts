@@ -44,6 +44,64 @@ export type StockMovement = {
   createdAt: string;
 };
 
+// ─── Sales ────────────────────────────────────────────────────────────────────
+
+export type PaymentMethod = 'cash' | 'card' | 'transfer';
+
+export type SaleItem = {
+  id: string;
+  product: { id: string; name: string; code: string | null };
+  quantity: number;
+  unitPrice: number;
+};
+
+export type Sale = {
+  id: string;
+  total: number;
+  profit: number | null;
+  paymentMethod: PaymentMethod;
+  notes: string | null;
+  itemCount: number;
+  items: SaleItem[];
+  user: { id: string; name: string };
+  createdAt: string;
+  refundedAt: string | null;
+};
+
+export type SalesSummary = {
+  total: number;
+  count: number;
+  profit: number;
+  avgTicket: number;
+  byPaymentMethod: { cash: number; card: number; transfer: number };
+};
+
+export type TopProduct = {
+  productId: string;
+  name: string;
+  qty: number;
+  revenue: number;
+};
+
+// ─── Turns ────────────────────────────────────────────────────────────────────
+
+export type TurnStatus = 'pending' | 'in_progress' | 'done' | 'cancelled' | 'no_show';
+
+export type Turn = {
+  id: string;
+  clientName: string;
+  clientPhone: string | null;
+  service: string;
+  startTime: string | null; // ISO datetime — null = sin hora (cola de espera)
+  duration: number;         // minutos
+  status: TurnStatus;
+  assignedUser: { id: string; name: string } | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
 export type PaginatedResult<T> = {
   data: T[];
   total: number;
@@ -60,7 +118,7 @@ export type AuthUser = {
   tenantRole: TenantRole | null;
 };
 
-export type Module = 'products' | 'categories' | 'stock' | 'turns';
+export type Module = 'products' | 'categories' | 'stock' | 'turns' | 'sales';
 
 export type TenantSummary = {
   id: string;

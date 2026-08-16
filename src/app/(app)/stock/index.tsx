@@ -5,18 +5,17 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState, useCallback, useMemo } from 'react';
+import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import {
   Search,
   ScanLine,
   Plus,
   History,
-  AlertTriangle,
   Package,
 } from 'lucide-react-native';
 import { api } from '@/lib/api';
@@ -42,10 +41,12 @@ const LEVEL_STYLES: Record<StockLevel, { badge: string; text: string; border: st
 
 function ProductRow({
   product,
-  onPress,
+  onPressDetail,
+  onPressMovement,
 }: {
   product: Product;
-  onPress: () => void;
+  onPressDetail: () => void;
+  onPressMovement: () => void;
 }) {
   const level = getStockLevel(product);
   const s = LEVEL_STYLES[level];
@@ -53,9 +54,9 @@ function ProductRow({
 
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={onPressDetail}
       activeOpacity={0.7}
-      className={`flex-row items-center px-4 py-3.5 border-b border-gray-100 ${isHighlighted ? s.border + ' border-l-4' : ''}`}
+      className={`flex-row items-center px-4 py-3.5 border-b border-gray-100 bg-white ${isHighlighted ? 'border-l-4 ' + s.border : ''}`}
     >
       <View className="flex-1 mr-3">
         <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
@@ -68,8 +69,18 @@ function ProductRow({
           <Text className="text-xs text-gray-400 mt-0.5">{product.category.name}</Text>
         ) : null}
       </View>
-      <View className={`px-2.5 py-1 rounded-lg ${s.badge}`}>
-        <Text className={`text-sm font-bold ${s.text}`}>{product.stock}</Text>
+      <View className="flex-row items-center gap-2">
+        <View className={`px-2.5 py-1 rounded-lg ${s.badge}`}>
+          <Text className={`text-sm font-bold ${s.text}`}>{product.stock}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={onPressMovement}
+          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          className="w-8 h-8 bg-blue-50 rounded-full items-center justify-center"
+          activeOpacity={0.7}
+        >
+          <Plus size={16} color="#208AEF" />
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -111,6 +122,8 @@ export default function StockScreen() {
   const { tenantRole } = useAuthContext();
   const isOwner = tenantRole === 'owner';
 
+  useFocusRefresh([['products']]);
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [refreshing, setRefreshing] = useState(false);
@@ -120,8 +133,10 @@ export default function StockScreen() {
     queryFn: () => api.get<Product[]>('/products'),
   });
 
+  const activeProducts = useMemo(() => products.filter((p) => p.isActive), [products]);
+
   const filtered = useMemo(() => {
-    let list = products.filter((p) => p.isActive);
+    let list = activeProducts;
 
     if (filter === 'low') {
       list = list.filter((p) => {
@@ -141,20 +156,19 @@ export default function StockScreen() {
       );
     }
 
-    // Ordenar: primero vacíos, luego bajo, luego ok
     return list.sort((a, b) => {
       const order: Record<StockLevel, number> = { empty: 0, low: 1, ok: 2 };
       return order[getStockLevel(a)] - order[getStockLevel(b)];
     });
-  }, [products, search, filter]);
+  }, [activeProducts, search, filter]);
 
   const lowCount = useMemo(
-    () => products.filter((p) => p.isActive && getStockLevel(p) !== 'ok').length,
-    [products],
+    () => activeProducts.filter((p) => getStockLevel(p) !== 'ok').length,
+    [activeProducts],
   );
   const emptyCount = useMemo(
-    () => products.filter((p) => p.isActive && p.stock === 0).length,
-    [products],
+    () => activeProducts.filter((p) => p.stock === 0).length,
+    [activeProducts],
   );
 
   const onRefresh = useCallback(async () => {
@@ -170,6 +184,10 @@ export default function StockScreen() {
       editStore.clearStockProductId();
     }
     router.push('/(modals)/stock-movement' as never);
+  }
+
+  function openDetail(productId: string) {
+    router.push(`/(app)/products/${productId}` as never);
   }
 
   function openScan() {
@@ -195,6 +213,30 @@ export default function StockScreen() {
             >
               <ScanLine size={20} color="#6B7280" />
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View className="flex-row gap-2 mb-4">
+          <View className="flex-1 bg-white border border-gray-200 rounded-xl py-3 items-center">
+            <Text className="text-xl font-bold text-gray-900">{activeProducts.length}</Text>
+            <Text className="text-xs text-gray-400 mt-0.5">Productos</Text>
+          </View>
+          <View className={`flex-1 border rounded-xl py-3 items-center ${lowCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+            <Text className={`text-xl font-bold ${lowCount > 0 ? 'text-amber-600' : 'text-gray-300'}`}>
+              {lowCount}
+            </Text>
+            <Text className={`text-xs mt-0.5 ${lowCount > 0 ? 'text-amber-500' : 'text-gray-400'}`}>
+              Stock bajo
+            </Text>
+          </View>
+          <View className={`flex-1 border rounded-xl py-3 items-center ${emptyCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+            <Text className={`text-xl font-bold ${emptyCount > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+              {emptyCount}
+            </Text>
+            <Text className={`text-xs mt-0.5 ${emptyCount > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+              Sin stock
+            </Text>
           </View>
         </View>
 
@@ -232,7 +274,11 @@ export default function StockScreen() {
         data={filtered}
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => (
-          <ProductRow product={item} onPress={() => openMovement(item.id)} />
+          <ProductRow
+            product={item}
+            onPressDetail={() => openDetail(item.id)}
+            onPressMovement={() => openMovement(item.id)}
+          />
         )}
         refreshControl={
           <RefreshControl
@@ -247,7 +293,7 @@ export default function StockScreen() {
               <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide">
                 Producto
               </Text>
-              <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+              <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide mr-9">
                 Stock
               </Text>
             </View>
@@ -265,15 +311,17 @@ export default function StockScreen() {
         }
       />
 
-      {/* FAB */}
-      <TouchableOpacity
-        onPress={() => openMovement()}
-        className="absolute bottom-8 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
-        activeOpacity={0.85}
-        style={{ elevation: 4 }}
-      >
-        <Plus size={26} color="white" />
-      </TouchableOpacity>
+      {/* FAB — only for owners */}
+      {isOwner && (
+        <TouchableOpacity
+          onPress={() => openMovement()}
+          className="absolute bottom-8 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
+          activeOpacity={0.85}
+          style={{ elevation: 4 }}
+        >
+          <Plus size={26} color="white" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }

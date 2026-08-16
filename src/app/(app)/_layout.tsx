@@ -1,22 +1,33 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Package, BarChart2, Users, User, Bell } from 'lucide-react-native';
+import { LayoutDashboard, Package, BarChart2, Users, User, Bell, ShoppingCart, CalendarDays } from 'lucide-react-native';
 import { useAuthContext } from '@/lib/auth-context';
+import { useModules } from '@/lib/use-modules';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { api } from '@/lib/api';
-import type { Module } from '@/lib/types';
 
-function canSeeModule(module: Module, staffModules: Module[] | null): boolean {
-  if (staffModules === null) return true;
-  return staffModules.includes(module);
-}
+const RELOAD_INTERVAL_MS = 5 * 60 * 1000; // refresh at most every 5 min on foreground
 
 export default function AppLayout() {
-  const { user, tenantRole } = useAuthContext();
-  const staffModules = user?.staffModules ?? null;
-  const isOwner = tenantRole === 'owner';
+  const { reloadUser } = useAuthContext();
+  const { isOwner, canProducts, canStock, canTurns, canSales } = useModules();
+  const lastReloadRef = useRef<number>(Date.now());
 
-  const hideProducts = !canSeeModule('products', staffModules) && !canSeeModule('categories', staffModules);
-  const hideStock = !canSeeModule('stock', staffModules);
+  // Refresh staffModules when app comes to foreground (so staff sees updated modules)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && Date.now() - lastReloadRef.current > RELOAD_INTERVAL_MS) {
+        lastReloadRef.current = Date.now();
+        void reloadUser();
+      }
+    });
+    return () => sub.remove();
+  }, [reloadUser]);
+
+  const hideProducts = !canProducts;
+  const hideStock = !canStock;
+  const hideTurns = !canTurns;
 
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
@@ -43,7 +54,7 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="products/index"
+        name="products"
         options={{
           title: 'Productos',
           href: hideProducts ? null : undefined,
@@ -56,6 +67,22 @@ export default function AppLayout() {
           title: 'Stock',
           href: hideStock ? null : undefined,
           tabBarIcon: ({ color, size }) => <BarChart2 size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="sales"
+        options={{
+          title: 'Ventas',
+          href: canSales ? undefined : null,
+          tabBarIcon: ({ color, size }) => <ShoppingCart size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="turns"
+        options={{
+          title: 'Turnos',
+          href: hideTurns ? null : undefined,
+          tabBarIcon: ({ color, size }) => <CalendarDays size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -85,7 +112,6 @@ export default function AppLayout() {
 
       {/* Pantallas sin tab */}
       <Tabs.Screen name="categories/index" options={{ href: null }} />
-      <Tabs.Screen name="products/[id]" options={{ href: null }} />
       <Tabs.Screen name="stock/history" options={{ href: null }} />
     </Tabs>
   );

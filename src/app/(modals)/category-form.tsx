@@ -38,7 +38,7 @@ export default function CategoryFormScreen() {
       } else {
         await api.post('/categories', body);
       }
-      await queryClient.invalidateQueries({ queryKey: ['categories'] });
+      await queryClient.invalidateQueries({ queryKey: ['categories'], refetchType: 'all' });
       editStore.clearCategory();
       router.back();
     } catch (err) {

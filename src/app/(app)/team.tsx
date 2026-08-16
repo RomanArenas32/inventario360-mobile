@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback, useMemo } from 'react';
+import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import { Search, Users, UserPlus, X } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
@@ -249,6 +250,9 @@ export default function TeamScreen() {
   const queryClient = useQueryClient();
   const { tenantRole } = useAuthContext();
   const isOwner = tenantRole === 'owner';
+
+  useFocusRefresh([['team-members'], ['team-invitations-pending']], 5 * 60_000);
+
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);

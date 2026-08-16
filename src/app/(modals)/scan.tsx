@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { X, ScanLine } from 'lucide-react-native';
@@ -11,6 +11,8 @@ import type { Product } from '@/lib/types';
 
 export default function ScanScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isProductMode = mode === 'product';
   const [permission, requestPermission] = useCameraPermissions();
   const scanning = useRef(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
@@ -21,7 +23,6 @@ export default function ScanScreen() {
   });
 
   function handleBarcode({ data }: { data: string }) {
-    // Prevent multiple triggers
     if (scanning.current) return;
     scanning.current = true;
     setScannedCode(data);
@@ -31,8 +32,12 @@ export default function ScanScreen() {
     );
 
     if (product) {
-      editStore.setStockProductId(product.id);
-      router.replace('/(modals)/stock-movement' as never);
+      if (isProductMode) {
+        router.replace(`/(app)/products/${product.id}` as never);
+      } else {
+        editStore.setStockProductId(product.id);
+        router.replace('/(modals)/stock-movement' as never);
+      }
     } else {
       Alert.alert(
         'Producto no encontrado',

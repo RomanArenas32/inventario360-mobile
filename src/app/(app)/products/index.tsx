@@ -5,8 +5,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState, useCallback } from 'react';
-import { Search, Plus, Pencil, Trash2, AlertTriangle, Tag } from 'lucide-react-native';
+import { useState, useCallback, useMemo } from 'react';
+import { useFocusRefresh } from '@/lib/use-focus-refresh';
+import { Search, Plus, Pencil, Trash2, AlertTriangle, Tag, ScanLine, X } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { editStore } from '@/lib/edit-store';
 import { useAuthContext } from '@/lib/auth-context';
@@ -21,8 +22,7 @@ function formatPrice(v: number | null) {
   return `$${v.toLocaleString('es-AR')}`;
 }
 
-type StatusFilter = 'all' | 'active' | 'inactive';
-type StockFilter = 'all' | 'low' | 'ok';
+type StockFilter = 'all' | 'low' | 'empty';
 
 // ─── Filter Chip ──────────────────────────────────────────────────────────────
 
@@ -46,21 +46,29 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 function ProductCard({
   product,
   isOwner,
+  onPress,
   onEdit,
   onDelete,
 }: {
   product: Product;
   isOwner: boolean;
+  onPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const isLow = product.minStock > 0 && product.stock <= product.minStock;
+  const isEmpty = product.stock === 0;
+  const isLow = !isEmpty && product.minStock > 0 && product.stock <= product.minStock;
+  const stockColor = isEmpty ? '#EF4444' : isLow ? '#F59E0B' : '#10B981';
 
   return (
-    <View className="bg-white rounded-2xl p-4 mb-3 shadow-sm">
-      {/* Row 1: name + code */}
+    <TouchableOpacity
+      onPress={onPress}
+      className="bg-white rounded-2xl p-4 mb-3 shadow-sm"
+      activeOpacity={0.72}
+    >
+      {/* Row 1: name + sale price */}
       <View className="flex-row items-start justify-between mb-2">
-        <View className="flex-1 mr-2">
+        <View className="flex-1 mr-3">
           <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
             {product.name}
           </Text>
@@ -68,46 +76,89 @@ function ProductCard({
             <Text className="text-xs text-gray-400 font-mono mt-0.5">{product.code}</Text>
           ) : null}
         </View>
-        <View
-          className={`px-2 py-0.5 rounded-full ${
-            product.isActive ? 'bg-green-100' : 'bg-gray-100'
-          }`}
-        >
-          <Text
-            className={`text-xs font-medium ${
-              product.isActive ? 'text-green-700' : 'text-gray-500'
-            }`}
-          >
-            {product.isActive ? 'Activo' : 'Inactivo'}
+        <Text className="text-xl font-bold text-gray-900">{formatPrice(product.salePrice)}</Text>
+      </View>
+
+      {/* Row 2: category + stock */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center gap-2">
+          {product.category ? (
+            <View className="flex-row items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-full">
+              <Tag size={10} color="#7C3AED" />
+              <Text className="text-xs text-purple-600">{product.category.name}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View className="flex-row items-center gap-1.5">
+          {(isEmpty || isLow) && <AlertTriangle size={12} color={stockColor} />}
+          <Text className="text-sm font-bold" style={{ color: stockColor }}>
+            {isEmpty ? 'Sin stock' : `${product.stock} en stock`}
           </Text>
         </View>
       </View>
 
-      {/* Row 2: category + prices */}
-      <View className="flex-row items-center gap-3 mb-2">
-        {product.category ? (
-          <View className="bg-purple-50 px-2 py-0.5 rounded-full">
-            <Text className="text-xs text-purple-600">{product.category.name}</Text>
-          </View>
-        ) : null}
-        <Text className="text-xs text-gray-400">
-          Costo: <Text className="text-gray-600">{formatPrice(product.costPrice)}</Text>
-        </Text>
-        <Text className="text-xs text-gray-400">
-          Venta: <Text className="text-gray-700 font-medium">{formatPrice(product.salePrice)}</Text>
-        </Text>
-      </View>
+      {/* Row 3: actions (owner only) */}
+      {isOwner && (
+        <View className="flex-row justify-end gap-1 mt-3 pt-2.5 border-t border-gray-50">
+          <TouchableOpacity
+            onPress={onEdit}
+            className="p-2 rounded-xl bg-gray-50"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Pencil size={14} color="#6B7280" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onDelete}
+            className="p-2 rounded-xl bg-gray-50"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Trash2 size={14} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
 
-      {/* Row 3: stock + actions */}
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-1.5">
-          {isLow && <AlertTriangle size={13} color="#F59E0B" />}
-          <Text className={`text-sm font-semibold ${isLow ? 'text-amber-500' : 'text-gray-700'}`}>
-            Stock: {product.stock}
+// ─── Category Card ────────────────────────────────────────────────────────────
+
+function CategoryCard({
+  category,
+  productCount,
+  isOwner,
+  onPress,
+  onEdit,
+  onDelete,
+}: {
+  category: Category;
+  productCount: number;
+  isOwner: boolean;
+  onPress: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      className="bg-white rounded-2xl px-4 py-3.5 mb-3 shadow-sm"
+      activeOpacity={0.72}
+    >
+      <View className="flex-row items-center">
+        <View className="flex-1 mr-3">
+          <Text className="text-base font-semibold text-gray-900">{category.name}</Text>
+          {category.description ? (
+            <Text className="text-sm text-gray-400 mt-0.5" numberOfLines={1}>
+              {category.description}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* Product count badge */}
+        <View className={`px-2.5 py-1 rounded-full mr-2 ${productCount === 0 ? 'bg-gray-100' : 'bg-blue-50'}`}>
+          <Text className={`text-xs font-semibold ${productCount === 0 ? 'text-gray-400' : 'text-blue-600'}`}>
+            {productCount === 0 ? 'Vacía' : `${productCount} prod.`}
           </Text>
-          {product.minStock > 0 && (
-            <Text className="text-xs text-gray-400">/ mín {product.minStock}</Text>
-          )}
         </View>
 
         {isOwner && (
@@ -129,52 +180,7 @@ function ProductCard({
           </View>
         )}
       </View>
-    </View>
-  );
-}
-
-// ─── Category Card ────────────────────────────────────────────────────────────
-
-function CategoryCard({
-  category,
-  isOwner,
-  onEdit,
-  onDelete,
-}: {
-  category: Category;
-  isOwner: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <View className="bg-white rounded-2xl px-4 py-3.5 mb-3 shadow-sm flex-row items-center">
-      <View className="flex-1 mr-3">
-        <Text className="text-base font-semibold text-gray-900">{category.name}</Text>
-        {category.description ? (
-          <Text className="text-sm text-gray-400 mt-0.5" numberOfLines={1}>
-            {category.description}
-          </Text>
-        ) : null}
-      </View>
-      {isOwner && (
-        <View className="flex-row gap-1">
-          <TouchableOpacity
-            onPress={onEdit}
-            className="p-2 rounded-xl bg-gray-50"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Pencil size={14} color="#6B7280" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onDelete}
-            className="p-2 rounded-xl bg-gray-50"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Trash2 size={14} color="#EF4444" />
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -186,12 +192,14 @@ export default function ProductsScreen() {
   const { tenantRole } = useAuthContext();
   const isOwner = tenantRole === 'owner';
 
+  useFocusRefresh([['products'], ['categories']]);
+
   const [activeTab, setActiveTab] = useState<CatalogTab>('products');
 
   // Products state
   const [productSearch, setProductSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [refreshingProducts, setRefreshingProducts] = useState(false);
 
   // Categories state
@@ -199,16 +207,44 @@ export default function ProductsScreen() {
   const [refreshingCategories, setRefreshingCategories] = useState(false);
 
   const { data: products = [], isLoading: loadingProducts } = useQuery({
-    queryKey: ['products', { productSearch, statusFilter, stockFilter }],
+    queryKey: ['products', { productSearch, stockFilter }],
     queryFn: () => {
       const params = new URLSearchParams();
       if (productSearch) params.set('search', productSearch);
-      if (statusFilter !== 'all') params.set('isActive', String(statusFilter === 'active'));
       if (stockFilter !== 'all') params.set('stock', stockFilter);
       const qs = params.toString();
       return api.get<Product[]>(`/products${qs ? `?${qs}` : ''}`);
     },
   });
+
+  // Query sin filtros para contar productos por categoría
+  const { data: allProducts = [] } = useQuery({
+    queryKey: ['products', { productSearch: '', stockFilter: 'all' }],
+    queryFn: () => api.get<Product[]>('/products'),
+  });
+
+  const productCountByCategory = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of allProducts) {
+      if (p.category?.id) {
+        map[p.category.id] = (map[p.category.id] ?? 0) + 1;
+      }
+    }
+    return map;
+  }, [allProducts]);
+
+  const uncategorizedCount = useMemo(
+    () => allProducts.filter((p) => !p.category?.id).length,
+    [allProducts],
+  );
+
+  // Filtro de categoría aplicado client-side
+  // categoryFilter === '__none__' → sin categoría
+  const displayedProducts = useMemo(() => {
+    if (!categoryFilter) return products;
+    if (categoryFilter === '__none__') return products.filter((p) => !p.category?.id);
+    return products.filter((p) => p.category?.id === categoryFilter);
+  }, [products, categoryFilter]);
 
   const { data: categories = [], isLoading: loadingCategories } = useQuery({
     queryKey: ['categories', { categorySearch }],
@@ -217,6 +253,11 @@ export default function ProductsScreen() {
       return api.get<Category[]>(`/categories${qs}`);
     },
   });
+
+  const activeCategoryName = useMemo(() => {
+    if (categoryFilter === '__none__') return 'Sin categoría';
+    return categories.find((c) => c.id === categoryFilter)?.name ?? '';
+  }, [categories, categoryFilter]);
 
   const onRefreshProducts = useCallback(async () => {
     setRefreshingProducts(true);
@@ -348,17 +389,26 @@ export default function ProductsScreen() {
       {/* ── Products tab ─────────────────────────────────────────────────────── */}
       {activeTab === 'products' && (
         <>
-          {/* Search */}
-          <View className="mx-4 mt-3 mb-3 flex-row items-center bg-white border border-gray-200 rounded-xl px-3 gap-2">
-            <Search size={16} color="#9CA3AF" />
-            <TextInput
-              className="flex-1 py-2.5 text-gray-900 text-sm"
-              placeholder="Buscar por nombre o código..."
-              placeholderTextColor="#9CA3AF"
-              value={productSearch}
-              onChangeText={setProductSearch}
-              clearButtonMode="while-editing"
-            />
+          {/* Search + scan */}
+          <View className="mx-4 mt-3 mb-3 flex-row items-center gap-2">
+            <View className="flex-1 flex-row items-center bg-white border border-gray-200 rounded-xl px-3 gap-2">
+              <Search size={16} color="#9CA3AF" />
+              <TextInput
+                className="flex-1 py-2.5 text-gray-900 text-sm"
+                placeholder="Buscar por nombre o código..."
+                placeholderTextColor="#9CA3AF"
+                value={productSearch}
+                onChangeText={setProductSearch}
+                clearButtonMode="while-editing"
+              />
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/(modals)/scan', params: { mode: 'product' } } as never)}
+              className="bg-white border border-gray-200 rounded-xl p-2.5"
+              activeOpacity={0.8}
+            >
+              <ScanLine size={20} color="#6B7280" />
+            </TouchableOpacity>
           </View>
 
           {/* Filters */}
@@ -368,13 +418,12 @@ export default function ProductsScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: 16 }}
               data={[
-                { key: 'all-s', label: 'Todos', onPress: () => setStatusFilter('all'), active: statusFilter === 'all' },
-                { key: 'active', label: 'Activos', onPress: () => setStatusFilter('active'), active: statusFilter === 'active' },
-                { key: 'inactive', label: 'Inactivos', onPress: () => setStatusFilter('inactive'), active: statusFilter === 'inactive' },
-                { key: 'sep', label: '|', onPress: () => {}, active: false },
-                { key: 'all-st', label: 'Todo stock', onPress: () => setStockFilter('all'), active: stockFilter === 'all' },
+                { key: 'all', label: 'Todos', onPress: () => setStockFilter('all'), active: stockFilter === 'all' },
                 { key: 'low', label: 'Stock bajo', onPress: () => setStockFilter('low'), active: stockFilter === 'low' },
-                { key: 'ok', label: 'Stock OK', onPress: () => setStockFilter('ok'), active: stockFilter === 'ok' },
+                { key: 'empty', label: 'Sin stock', onPress: () => setStockFilter('empty'), active: stockFilter === 'empty' },
+                ...(uncategorizedCount > 0
+                  ? [{ key: 'no-cat', label: `Sin categoría (${uncategorizedCount})`, onPress: () => setCategoryFilter('__none__'), active: categoryFilter === '__none__' }]
+                  : []),
               ]}
               keyExtractor={(item) => item.key}
               renderItem={({ item }) =>
@@ -387,13 +436,24 @@ export default function ProductsScreen() {
             />
           </View>
 
+          {/* Banner de filtro por categoría */}
+          {categoryFilter ? (
+            <View className="mx-4 mb-2 flex-row items-center bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 gap-2">
+              <Tag size={13} color="#3B82F6" />
+              <Text className="flex-1 text-sm text-blue-700 font-medium">{activeCategoryName}</Text>
+              <TouchableOpacity onPress={() => setCategoryFilter('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={15} color="#3B82F6" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {loadingProducts ? (
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator color="#208AEF" />
             </View>
           ) : (
             <FlatList
-              data={products}
+              data={displayedProducts}
               keyExtractor={(p) => p.id}
               contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
               refreshControl={
@@ -402,7 +462,7 @@ export default function ProductsScreen() {
               ListEmptyComponent={
                 <View className="items-center py-16">
                   <Text className="text-gray-400 text-sm">
-                    {productSearch || statusFilter !== 'all' || stockFilter !== 'all'
+                    {productSearch || stockFilter !== 'all' || categoryFilter
                       ? 'No se encontraron productos con ese criterio.'
                       : 'No hay productos. Agregá el primero.'}
                   </Text>
@@ -412,6 +472,7 @@ export default function ProductsScreen() {
                 <ProductCard
                   product={item}
                   isOwner={isOwner}
+                  onPress={() => router.push(`/(app)/products/${item.id}` as never)}
                   onEdit={() => openEditProduct(item)}
                   onDelete={() => confirmDeleteProduct(item)}
                 />
@@ -459,7 +520,12 @@ export default function ProductsScreen() {
               renderItem={({ item }) => (
                 <CategoryCard
                   category={item}
+                  productCount={productCountByCategory[item.id] ?? 0}
                   isOwner={isOwner}
+                  onPress={() => {
+                    setCategoryFilter(item.id);
+                    setActiveTab('products');
+                  }}
                   onEdit={() => openEditCategory(item)}
                   onDelete={() => confirmDeleteCategory(item)}
                 />

@@ -23,6 +23,12 @@ const TYPES: TypeOption[] = [
   { value: 'adjustment', label: 'Ajuste',   desc: 'establece el real', color: '#2563EB', bg: '#EFF6FF' },
 ];
 
+const QUICK_REASONS: Record<StockMovementType, string[]> = {
+  entry:      ['Compra a proveedor', 'Devolución de cliente', 'Transferencia'],
+  exit:       ['Venta', 'Merma / vencimiento', 'Transferencia', 'Pérdida'],
+  adjustment: ['Conteo físico', 'Corrección de error'],
+};
+
 // ─── Product picker ────────────────────────────────────────────────────────────
 
 function ProductPicker({
@@ -117,14 +123,18 @@ export default function StockMovementScreen() {
     if (!productId) { setError('Seleccioná un producto'); return; }
     if (!Number.isInteger(qty) || qty < 0) { setError('La cantidad debe ser un número entero válido'); return; }
     if (type !== 'adjustment' && qty < 1) { setError('La cantidad debe ser mayor que cero'); return; }
-    if (!reason.trim()) { setError('El motivo es obligatorio'); return; }
 
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/stock-movements', { productId, type, quantity: qty, reason: reason.trim() });
-      await queryClient.invalidateQueries({ queryKey: ['products'] });
-      await queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      await api.post('/stock-movements', {
+        productId,
+        type,
+        quantity: qty,
+        reason: reason.trim() || null,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'all' });
+      await queryClient.invalidateQueries({ queryKey: ['stock-movements'], refetchType: 'all' });
       editStore.clearStockProductId();
       router.back();
     } catch (err) {
@@ -226,14 +236,36 @@ export default function StockMovementScreen() {
 
         {/* Motivo */}
         <View className="mb-4">
-          <Text className="text-sm font-medium text-gray-700 mb-1.5">
-            Motivo <Text className="text-red-500">*</Text>
+          <Text className="text-sm font-medium text-gray-700 mb-2">
+            Motivo{' '}
+            <Text className="text-xs text-gray-400 font-normal">(opcional)</Text>
           </Text>
+
+          {/* Quick reasons */}
+          <View className="flex-row flex-wrap gap-2 mb-2">
+            {QUICK_REASONS[type].map((r) => (
+              <TouchableOpacity
+                key={r}
+                onPress={() => setReason(r)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  reason === r
+                    ? 'bg-blue-500 border-blue-500'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+                activeOpacity={0.7}
+              >
+                <Text className={`text-xs font-medium ${reason === r ? 'text-white' : 'text-gray-600'}`}>
+                  {r}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <TextInput
             className={`${inputCls} min-h-20`}
             value={reason}
             onChangeText={setReason}
-            placeholder="Ej: Compra al proveedor, venta, conteo físico..."
+            placeholder="O escribí el motivo..."
             placeholderTextColor="#9CA3AF"
             multiline
             numberOfLines={3}

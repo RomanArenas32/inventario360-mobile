@@ -22,6 +22,7 @@ import {
   Check,
   X,
   Lock,
+  Settings,
 } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import type { TenantSummary } from '@/lib/types';
@@ -313,7 +314,7 @@ function SwitchTenantModal({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
-  const { user, tenantRole, activeTenantId, signOut, switchTenant } = useAuthContext();
+  const { user, tenantRole, activeTenantId, signOut, switchTenant, reloadUser } = useAuthContext();
   const router = useRouter();
 
   const [editNameVisible, setEditNameVisible] = useState(false);
@@ -383,7 +384,7 @@ export default function ProfileScreen() {
 
           {hasMultipleTenants && (
             <TouchableOpacity
-              className="flex-row items-center gap-3 py-3.5"
+              className="flex-row items-center gap-3 py-3.5 border-b border-gray-100"
               onPress={() => setSwitchTenantVisible(true)}
               activeOpacity={0.6}
             >
@@ -391,6 +392,20 @@ export default function ProfileScreen() {
                 <Building2 size={16} color="#9CA3AF" />
               </View>
               <Text className="flex-1 text-sm font-medium text-gray-900">Cambiar negocio</Text>
+              <ChevronRight size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          )}
+
+          {tenantRole === 'owner' && (
+            <TouchableOpacity
+              className="flex-row items-center gap-3 py-3.5"
+              onPress={() => router.push('/(modals)/business-settings' as never)}
+              activeOpacity={0.6}
+            >
+              <View className="w-8 items-center">
+                <Settings size={16} color="#9CA3AF" />
+              </View>
+              <Text className="flex-1 text-sm font-medium text-gray-900">Configuración del negocio</Text>
               <ChevronRight size={16} color="#D1D5DB" />
             </TouchableOpacity>
           )}
@@ -412,7 +427,7 @@ export default function ProfileScreen() {
         visible={editNameVisible}
         initialName={displayName}
         onClose={() => setEditNameVisible(false)}
-        onSaved={(name) => { setDisplayName(name); setEditNameVisible(false); }}
+        onSaved={(name) => { setDisplayName(name); setEditNameVisible(false); void reloadUser(); }}
       />
       <ChangePasswordModal
         visible={changePassVisible}

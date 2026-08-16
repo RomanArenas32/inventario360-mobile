@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
+import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import { AlertTriangle, Bell, CheckCheck } from 'lucide-react-native';
 import { api } from '@/lib/api';
 
@@ -73,6 +74,9 @@ function NotificationRow({
 
 export default function NotificationsScreen() {
   const queryClient = useQueryClient();
+
+  useFocusRefresh([['notifications'], ['notifications-unread']], 60_000);
+
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: notifications = [], isLoading } = useQuery({

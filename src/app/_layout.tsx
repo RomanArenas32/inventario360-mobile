@@ -1,13 +1,19 @@
 import '../global.css';
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuthContext } from '@/lib/auth-context';
 import { registerPushToken } from '@/lib/push-notifications';
 
 SplashScreen.preventAutoHideAsync();
+
+// Integrar AppState con TanStack Query para refetch al volver al app
+AppState.addEventListener('change', (state) => {
+  focusManager.setFocused(state === 'active');
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {

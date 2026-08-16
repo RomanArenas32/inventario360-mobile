@@ -5,8 +5,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { ChevronDown, X, Check } from 'lucide-react-native';
+import { useState, useMemo } from 'react';
+import { ChevronDown, X, Check, Search } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { editStore } from '@/lib/edit-store';
 import type { Category, Product } from '@/lib/types';
@@ -39,7 +39,20 @@ function CategoryPicker({
   categories: Category[];
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = categories.find((c) => c.id === value);
+
+  const filtered = useMemo(() => {
+    const all = [{ id: '', name: 'Sin categoría' }, ...categories];
+    if (!search.trim()) return all;
+    const q = search.trim().toLowerCase();
+    return all.filter((c) => c.name.toLowerCase().includes(q));
+  }, [categories, search]);
+
+  function handleClose() {
+    setSearch('');
+    setOpen(false);
+  }
 
   return (
     <>
@@ -57,23 +70,43 @@ function CategoryPicker({
         <SafeAreaView className="flex-1 bg-white">
           <View className="px-4 py-4 border-b border-gray-100 flex-row justify-between items-center">
             <Text className="text-lg font-semibold text-gray-900">Categoría</Text>
-            <TouchableOpacity onPress={() => setOpen(false)}>
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <X size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
+          {/* Buscador */}
+          <View className="mx-4 my-3 flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 gap-2">
+            <Search size={15} color="#9CA3AF" />
+            <TextInput
+              className="flex-1 py-2.5 text-gray-900 text-sm"
+              placeholder="Buscar categoría..."
+              placeholderTextColor="#9CA3AF"
+              value={search}
+              onChangeText={setSearch}
+              autoFocus
+              clearButtonMode="while-editing"
+            />
+          </View>
+
           <FlatList
-            data={[{ id: '', name: 'Sin categoría' }, ...categories]}
+            data={filtered}
             keyExtractor={(c) => c.id || 'none'}
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <TouchableOpacity
                 className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100"
-                onPress={() => { onChange(item.id); setOpen(false); }}
+                onPress={() => { onChange(item.id); handleClose(); }}
               >
                 <Text className="text-base text-gray-900">{item.name}</Text>
                 {value === item.id && <Check size={18} color="#208AEF" />}
               </TouchableOpacity>
             )}
+            ListEmptyComponent={
+              <View className="items-center py-12">
+                <Text className="text-gray-400 text-sm">Sin resultados para "{search}"</Text>
+              </View>
+            }
           />
         </SafeAreaView>
       </Modal>
@@ -151,7 +184,7 @@ export default function ProductFormScreen() {
       } else {
         await api.post('/products', body);
       }
-      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'all' });
       editStore.clearProduct();
       router.back();
     } catch (err) {
@@ -289,15 +322,17 @@ export default function ProductFormScreen() {
           />
         </Field>
 
-        <View className="flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4">
-          <Text className="text-base text-gray-900">Producto activo</Text>
-          <Switch
-            value={form.isActive}
-            onValueChange={(v) => set('isActive', v)}
-            trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
-            thumbColor={form.isActive ? '#208AEF' : '#9CA3AF'}
-          />
-        </View>
+        {isEditing && (
+          <View className="flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4">
+            <Text className="text-base text-gray-900">Producto activo</Text>
+            <Switch
+              value={form.isActive}
+              onValueChange={(v) => set('isActive', v)}
+              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
+              thumbColor={form.isActive ? '#208AEF' : '#9CA3AF'}
+            />
+          </View>
+        )}
 
         {error ? (
           <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">

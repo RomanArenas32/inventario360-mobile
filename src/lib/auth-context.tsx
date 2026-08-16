@@ -31,6 +31,7 @@ type AuthContextType = {
   user: AuthUser | null;
   signIn: (token: string) => void;
   signOut: () => Promise<void>;
+  reloadUser: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   onUnauthorized: () => Promise<void>;
 };
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: me.email,
         avatarUrl: me.avatarUrl,
         tenantName: me.tenant?.name ?? null,
-        staffModules: me.tenantRole === 'owner' ? null : (me.tenant?.staffModules ?? null),
+        staffModules: me.tenant?.staffModules ?? null,
         tenants: me.tenants ?? [],
       });
     } catch {
@@ -120,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ isReady, isAuthed, tenantRole, activeTenantId, user, signIn, signOut, switchTenant, onUnauthorized }}
+      value={{ isReady, isAuthed, tenantRole, activeTenantId, user, signIn, signOut, reloadUser: loadMe, switchTenant, onUnauthorized }}
     >
       {children}
     </AuthContext.Provider>
