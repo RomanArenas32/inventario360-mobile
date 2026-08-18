@@ -33,6 +33,8 @@ yarn-error.*
 # local env files
 .env*.local
 .env
+.env.production
+.env.development
 
 # Google Play service account key (secreto — subir via EAS secrets o local only)
 google-play-key.json
