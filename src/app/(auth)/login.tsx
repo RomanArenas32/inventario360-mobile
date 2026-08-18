@@ -20,8 +20,7 @@ type LoginResponse = {
 // Google rechaza el redirect URI exp:// que usa el simulador.
 // Se necesita un development build o production build.
 const isExpoGo =
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-  !Constants.isDevice;
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
 const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
