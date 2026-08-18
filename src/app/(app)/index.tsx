@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -7,13 +7,15 @@ import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import {
   AlertTriangle, ScanLine, Plus, BarChart2,
   TrendingUp, TrendingDown, Sliders, Bell, ChevronRight, CheckCircle2,
-  ShoppingCart, CalendarDays, Clock, Settings2,
+  ShoppingCart, CalendarDays, Clock, Settings2, LineChart,
 } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
 import { useModules } from '@/lib/use-modules';
 import { editStore } from '@/lib/edit-store';
-import type { Product, StockMovement, StockMovementType, PaginatedResult, Turn, SalesSummary } from '@/lib/types';
+import type { Product, StockMovement, StockMovementType, PaginatedResult, Turn, SalesSummary, TurnStatus } from '@/lib/types';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatCurrency(v: number): string {
   return `$${Math.round(v).toLocaleString('es-AR')}`;
@@ -32,6 +34,11 @@ function formatTimeAgo(dateStr: string): string {
 function formatTime(iso: string | null): string {
   if (!iso) return 'Cola';
   return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function pctDiff(today: number, yesterday: number): number | null {
+  if (yesterday === 0) return today > 0 ? 100 : null;
+  return Math.round(((today - yesterday) / yesterday) * 100);
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -145,15 +152,39 @@ function ActivityRow({ item }: { item: StockMovement }) {
 
 // ─── SalesWidget ──────────────────────────────────────────────────────────────
 
+function VsYesterday({ pct }: { pct: number | null }) {
+  if (pct === null) return null;
+  const up = pct >= 0;
+  return (
+    <View className={`flex-row items-center gap-0.5 mt-1 ${up ? '' : ''}`}>
+      {up ? <TrendingUp size={11} color="#16A34A" /> : <TrendingDown size={11} color="#DC2626" />}
+      <Text className={`text-xs font-semibold ${up ? 'text-green-600' : 'text-red-500'}`}>
+        {up ? '+' : ''}{pct}% vs ayer
+      </Text>
+    </View>
+  );
+}
+
 function SalesWidget({
   summary,
+  yesterdaySummary,
   onNewSale,
   onViewAll,
+  onViewStats,
 }: {
   summary: SalesSummary | undefined;
+  yesterdaySummary: SalesSummary | undefined;
   onNewSale: () => void;
   onViewAll: () => void;
+  onViewStats: () => void;
 }) {
+  const totalPct = summary && yesterdaySummary
+    ? pctDiff(summary.total, yesterdaySummary.total)
+    : null;
+
+  const hasSales = (summary?.count ?? 0) > 0;
+  const showProfit = hasSales && (summary?.profit ?? 0) > 0;
+
   return (
     <View className="bg-white rounded-2xl overflow-hidden mb-5 border border-gray-100">
       <View className="flex-row items-center justify-between px-4 pt-3.5 pb-3 border-b border-gray-100">
@@ -161,28 +192,44 @@ function SalesWidget({
           <ShoppingCart size={13} color="#208AEF" />
           <Text className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Ventas hoy</Text>
         </View>
-        <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text className="text-xs text-blue-500 font-medium">Ver todas</Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-3">
+          <TouchableOpacity onPress={onViewStats} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <LineChart size={15} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text className="text-xs text-blue-500 font-medium">Ver todas</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View className="flex-row px-4 py-3.5 gap-4">
+      <View className="flex-row px-4 py-3.5 gap-3">
+        {/* Facturado */}
         <View className="flex-1">
           <Text className="text-xs text-gray-400 font-medium">Facturado</Text>
           <Text className="text-xl font-bold text-gray-900 mt-0.5">
             {summary ? formatCurrency(summary.total) : '—'}
           </Text>
+          <VsYesterday pct={totalPct} />
         </View>
+
+        {/* Ventas */}
         <View className="flex-1">
           <Text className="text-xs text-gray-400 font-medium">Ventas</Text>
           <Text className="text-xl font-bold text-gray-900 mt-0.5">
             {summary?.count ?? '—'}
           </Text>
+          {(summary?.avgTicket ?? 0) > 0 && (
+            <Text className="text-xs text-gray-400 mt-1">
+              prom. {formatCurrency(summary!.avgTicket)}
+            </Text>
+          )}
         </View>
+
+        {/* Ganancia */}
         <View className="flex-1">
           <Text className="text-xs text-gray-400 font-medium">Ganancia</Text>
-          <Text className="text-xl font-bold text-green-600 mt-0.5">
-            {summary ? formatCurrency(summary.profit) : '—'}
+          <Text className={`text-xl font-bold mt-0.5 ${showProfit ? 'text-green-600' : 'text-gray-300'}`}>
+            {summary ? (showProfit ? formatCurrency(summary.profit) : '—') : '—'}
           </Text>
         </View>
       </View>
@@ -205,11 +252,13 @@ function TurnsWidget({
   todayKey,
   onNewTurn,
   onViewAll,
+  onUpdateStatus,
 }: {
   turns: Turn[];
   todayKey: string;
   onNewTurn: () => void;
   onViewAll: () => void;
+  onUpdateStatus: (turn: Turn, status: TurnStatus) => Promise<void>;
 }) {
   const heroTurn = useMemo(() => {
     const active = turns.find((t) => t.status === 'in_progress');
@@ -223,6 +272,10 @@ function TurnsWidget({
   }, [turns]);
 
   const pendingCount = turns.filter((t) => t.status === 'pending').length;
+  const inProgressCount = turns.filter((t) => t.status === 'in_progress').length;
+  const doneCount = turns.filter((t) => t.status === 'done').length;
+  const totalCount = turns.length;
+
   const isActive = heroTurn?.status === 'in_progress';
 
   return (
@@ -240,16 +293,40 @@ function TurnsWidget({
           </View>
           <Text className="text-white text-xl font-bold">{heroTurn.clientName}</Text>
           <Text className={`mt-0.5 ${isActive ? 'text-amber-100' : 'text-blue-100'}`}>{heroTurn.service}</Text>
-          <View className="flex-row items-center gap-4 mt-2">
+          <View className="flex-row items-center gap-4 mt-2 flex-wrap">
             <View className="flex-row items-center gap-1">
               <Clock size={12} color="rgba(255,255,255,0.8)" />
               <Text className="text-white text-sm opacity-90">{formatTime(heroTurn.startTime)}</Text>
             </View>
             <Text className="text-white text-sm opacity-90">{heroTurn.duration} min</Text>
-            {pendingCount > 1 && (
+            {totalCount > 1 && (
               <View className="bg-white/20 px-2 py-0.5 rounded-full">
-                <Text className="text-white text-xs font-semibold">{pendingCount} pendientes</Text>
+                <Text className="text-white text-xs font-semibold">
+                  {doneCount}/{totalCount} completados
+                </Text>
               </View>
+            )}
+          </View>
+
+          {/* Action buttons */}
+          <View className="flex-row gap-2 mt-3">
+            {heroTurn.status === 'pending' && (
+              <TouchableOpacity
+                onPress={() => void onUpdateStatus(heroTurn, 'in_progress')}
+                className="flex-1 bg-white py-2.5 rounded-xl items-center"
+                activeOpacity={0.85}
+              >
+                <Text className="text-blue-500 font-bold text-sm">▶  Iniciar turno</Text>
+              </TouchableOpacity>
+            )}
+            {heroTurn.status === 'in_progress' && (
+              <TouchableOpacity
+                onPress={() => void onUpdateStatus(heroTurn, 'done')}
+                className="flex-1 bg-white py-2.5 rounded-xl items-center"
+                activeOpacity={0.85}
+              >
+                <Text className="text-amber-600 font-bold text-sm">✓  Completar turno</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -265,6 +342,30 @@ function TurnsWidget({
           <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text className="text-xs text-blue-500 font-medium">Ver agenda</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Day summary row */}
+      {totalCount > 0 && (
+        <View className="flex-row gap-2 mb-3">
+          {pendingCount > 0 && (
+            <View className="flex-row items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-full">
+              <View className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <Text className="text-xs font-medium text-blue-600">{pendingCount} pendiente{pendingCount !== 1 ? 's' : ''}</Text>
+            </View>
+          )}
+          {inProgressCount > 0 && (
+            <View className="flex-row items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-full">
+              <View className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <Text className="text-xs font-medium text-amber-600">En curso</Text>
+            </View>
+          )}
+          {doneCount > 0 && (
+            <View className="flex-row items-center gap-1 bg-green-50 px-2.5 py-1 rounded-full">
+              <View className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <Text className="text-xs font-medium text-green-600">{doneCount} listo{doneCount !== 1 ? 's' : ''}</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -302,14 +403,14 @@ export default function DashboardScreen() {
   useFocusRefresh([
     ['products'],
     ['notifications'],
-    ...(isOwner && canStock ? [['stock-movements-recent']] : []),
-    ...(canSales ? [['sales-summary', 'today']] : []),
+    ...(canStock ? [['stock-movements-recent']] : []),
+    ...(canSales ? [['sales-summary', 'today'], ['sales-summary', 'yesterday']] : []),
     ...(canTurns ? [['turns', todayKey]] : []),
   ]);
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: products = [] } = useQuery({
+  const { data: products = [], isLoading: loadingProducts } = useQuery({
     queryKey: ['products'],
     queryFn: () => api.get<Product[]>('/products'),
     enabled: canProducts,
@@ -332,7 +433,13 @@ export default function DashboardScreen() {
     enabled: canSales,
   });
 
-  const { data: todayTurns = [] } = useQuery({
+  const { data: yesterdaySummary } = useQuery({
+    queryKey: ['sales-summary', 'yesterday'],
+    queryFn: () => api.get<SalesSummary>('/sales/summary?period=yesterday'),
+    enabled: canSales,
+  });
+
+  const { data: todayTurns = [], refetch: refetchTurns } = useQuery({
     queryKey: ['turns', todayKey],
     queryFn: () => api.get<Turn[]>(`/turns?date=${todayKey}`),
     enabled: canTurns,
@@ -344,27 +451,58 @@ export default function DashboardScreen() {
       queryClient.invalidateQueries({ queryKey: ['products'] }),
       queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       queryClient.invalidateQueries({ queryKey: ['stock-movements-recent'] }),
-      isOwner ? queryClient.invalidateQueries({ queryKey: ['sales-summary', 'today'] }) : Promise.resolve(),
+      canSales ? queryClient.invalidateQueries({ queryKey: ['sales-summary'] }) : Promise.resolve(),
       canTurns ? queryClient.invalidateQueries({ queryKey: ['turns', todayKey] }) : Promise.resolve(),
     ]);
     setRefreshing(false);
-  }, [queryClient, isOwner, canTurns, todayKey]);
+  }, [queryClient, canSales, canTurns, todayKey]);
+
+  // ─── Turn status update ──────────────────────────────────────────────────
+
+  async function handleTurnStatus(turn: Turn, status: TurnStatus) {
+    // Optimistic update — instant UI response before API roundtrip
+    queryClient.setQueryData<Turn[]>(['turns', todayKey], (prev) =>
+      prev?.map((t) => t.id === turn.id ? { ...t, status } : t) ?? [],
+    );
+    try {
+      await api.patch(`/turns/${turn.id}`, { status });
+      void queryClient.invalidateQueries({ queryKey: ['turns', todayKey] });
+      if (status === 'done') {
+        Alert.alert(
+          'Turno completado',
+          `¿Registrar una venta por el servicio de ${turn.clientName}?`,
+          [
+            { text: 'No, gracias' },
+            {
+              text: 'Registrar venta',
+              onPress: () => {
+                const base = '/(modals)/new-sale';
+                const query = turn.price
+                  ? `?service=${encodeURIComponent(turn.service)}&servicePrice=${turn.price}`
+                  : '';
+                router.push(`${base}${query}` as never);
+              },
+            },
+          ],
+        );
+      }
+    } catch (err) {
+      // Rollback on error
+      void queryClient.invalidateQueries({ queryKey: ['turns', todayKey] });
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo actualizar el turno');
+    }
+  }
+
+  // ─── Derived values ──────────────────────────────────────────────────────
 
   const activeProducts = useMemo(() => products.filter((p) => p.isActive), [products]);
-
-  const sinStock = useMemo(
-    () => activeProducts.filter((p) => p.stock === 0),
-    [activeProducts],
-  );
+  const sinStock = useMemo(() => activeProducts.filter((p) => p.stock === 0), [activeProducts]);
   const stockBajo = useMemo(
     () => activeProducts.filter((p) => p.stock > 0 && p.minStock > 0 && p.stock <= p.minStock),
     [activeProducts],
   );
   const inventoryValue = useMemo(
-    () =>
-      activeProducts
-        .filter((p) => p.costPrice != null)
-        .reduce((sum, p) => sum + p.stock * (p.costPrice ?? 0), 0),
+    () => activeProducts.filter((p) => p.costPrice != null).reduce((s, p) => s + p.stock * (p.costPrice ?? 0), 0),
     [activeProducts],
   );
   const hasInventoryValue = activeProducts.some((p) => p.costPrice != null);
@@ -377,11 +515,7 @@ export default function DashboardScreen() {
   const movements = recentData?.data ?? [];
 
   const firstName = user?.name?.split(' ')[0] ?? 'Hola';
-  const todayRaw = new Date().toLocaleDateString('es-AR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  const todayRaw = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const todayStr = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
 
   function openMovement() {
@@ -390,10 +524,7 @@ export default function DashboardScreen() {
   }
 
   const allGood = canStock && sinStock.length === 0 && stockBajo.length === 0 && activeProducts.length > 0;
-
   const noModules = !canProducts && !canStock && !canTurns && !canSales;
-
-  // Service businesses (have turns) show agenda first; inventory businesses show stock stats first
   const isServiceBusiness = canTurns;
 
   return (
@@ -434,17 +565,22 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Empty state — no modules active */}
-        {noModules && (
+        {/* Loading state */}
+        {loadingProducts && canProducts && (
+          <View className="flex-1 items-center justify-center py-20">
+            <ActivityIndicator size="large" color="#208AEF" />
+          </View>
+        )}
+
+        {/* Empty state — no modules */}
+        {!loadingProducts && noModules && (
           <View className="flex-1 items-center justify-center py-16">
             <Image
               source={require('../../../assets/images/marca1.webp')}
               style={{ width: 220, height: 220 }}
               resizeMode="contain"
             />
-            <Text className="text-lg font-bold text-gray-800 mt-4 text-center">
-              Sin módulos activos
-            </Text>
+            <Text className="text-lg font-bold text-gray-800 mt-4 text-center">Sin módulos activos</Text>
             <Text className="text-sm text-gray-400 mt-2 text-center px-8 leading-5">
               Activá los módulos que usás para ver tu negocio de un vistazo.
             </Text>
@@ -460,28 +596,34 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Dashboard content — only when at least one module is active */}
         {/* SERVICE BUSINESSES: Turns widget first */}
-        {!noModules && isServiceBusiness && (
+        {!loadingProducts && !noModules && isServiceBusiness && (
           <TurnsWidget
             turns={todayTurns}
             todayKey={todayKey}
             onNewTurn={() => router.push(`/(modals)/turn-form?date=${todayKey}` as never)}
             onViewAll={() => router.push('/(app)/turns' as never)}
+            onUpdateStatus={handleTurnStatus}
           />
         )}
 
-        {/* Stats bar — inventory info */}
-        {!noModules && canProducts && (
+        {/* Stats bar — tappables */}
+        {!loadingProducts && !noModules && canProducts && (
           <View className="flex-row gap-2.5 mb-5">
-            <View className="flex-1 bg-white rounded-2xl p-3.5 border border-gray-100">
+            <TouchableOpacity
+              className="flex-1 bg-white rounded-2xl p-3.5 border border-gray-100"
+              onPress={() => router.push('/(app)/products' as never)}
+              activeOpacity={0.7}
+            >
               <Text className="text-xs text-gray-400 font-medium mb-1">Productos</Text>
               <Text className="text-2xl font-bold text-gray-900">{activeProducts.length}</Text>
-            </View>
-            <View
+            </TouchableOpacity>
+            <TouchableOpacity
               className={`flex-1 rounded-2xl p-3.5 border ${
                 sinStock.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
               }`}
+              onPress={() => router.push('/(app)/stock/index' as never)}
+              activeOpacity={0.7}
             >
               <Text className={`text-xs font-medium mb-1 ${sinStock.length > 0 ? 'text-red-400' : 'text-gray-400'}`}>
                 Sin stock
@@ -489,11 +631,13 @@ export default function DashboardScreen() {
               <Text className={`text-2xl font-bold ${sinStock.length > 0 ? 'text-red-600' : 'text-gray-300'}`}>
                 {sinStock.length}
               </Text>
-            </View>
-            <View
+            </TouchableOpacity>
+            <TouchableOpacity
               className={`flex-1 rounded-2xl p-3.5 border ${
                 stockBajo.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'
               }`}
+              onPress={() => router.push('/(app)/stock/index' as never)}
+              activeOpacity={0.7}
             >
               <Text className={`text-xs font-medium mb-1 ${stockBajo.length > 0 ? 'text-amber-400' : 'text-gray-400'}`}>
                 Stock bajo
@@ -501,38 +645,39 @@ export default function DashboardScreen() {
               <Text className={`text-2xl font-bold ${stockBajo.length > 0 ? 'text-amber-500' : 'text-gray-300'}`}>
                 {stockBajo.length}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Valor del inventario — owner only */}
-        {!noModules && isOwner && canProducts && hasInventoryValue && (
-          <View className="bg-white rounded-2xl px-4 py-3.5 mb-5 border border-gray-100 flex-row items-center justify-between">
+        {/* Valor del inventario — owner only, tappable */}
+        {!loadingProducts && !noModules && isOwner && canProducts && hasInventoryValue && (
+          <TouchableOpacity
+            className="bg-white rounded-2xl px-4 py-3.5 mb-5 border border-gray-100 flex-row items-center justify-between"
+            onPress={() => router.push('/(app)/products' as never)}
+            activeOpacity={0.7}
+          >
             <View>
               <Text className="text-xs text-gray-400 font-medium">Valor del inventario</Text>
               <Text className="text-xl font-bold text-gray-900 mt-0.5">{formatCurrency(inventoryValue)}</Text>
             </View>
-            <View className="bg-blue-50 px-3 py-1.5 rounded-xl">
-              <Text className="text-xs text-blue-500 font-medium">a precio de costo</Text>
+            <View className="flex-row items-center gap-2">
+              <View className="bg-blue-50 px-3 py-1.5 rounded-xl">
+                <Text className="text-xs text-blue-500 font-medium">a precio de costo</Text>
+              </View>
+              <ChevronRight size={14} color="#D1D5DB" />
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* Acciones rápidas */}
-        {!noModules && (canProducts || canStock || canTurns) && (
+        {!loadingProducts && !noModules && (canProducts || canStock || canTurns || canSales) && (
           <View className="flex-row gap-2.5 mb-5">
-            {canProducts && (
+            {canSales && (
               <QuickAction
-                icon={<ScanLine size={20} color="#208AEF" />}
-                label="Escanear"
-                onPress={() => router.push('/(modals)/scan?mode=product' as never)}
-              />
-            )}
-            {canStock && (
-              <QuickAction
-                icon={<BarChart2 size={20} color="#208AEF" />}
-                label="Movimiento"
-                onPress={openMovement}
+                icon={<ShoppingCart size={20} color="white" />}
+                label="Venta"
+                onPress={() => router.push('/(modals)/new-sale' as never)}
+                primary
               />
             )}
             {canTurns && (
@@ -542,35 +687,41 @@ export default function DashboardScreen() {
                 onPress={() => router.push(`/(modals)/turn-form?date=${todayKey}` as never)}
               />
             )}
-            {isOwner && canProducts && (
+            {canStock && (
               <QuickAction
-                icon={<Plus size={20} color="white" />}
-                label="Nuevo"
-                onPress={() => router.push('/(modals)/product-form' as never)}
-                primary
+                icon={<BarChart2 size={20} color="#208AEF" />}
+                label="Movimiento"
+                onPress={openMovement}
+              />
+            )}
+            {canProducts && (
+              <QuickAction
+                icon={<ScanLine size={20} color="#208AEF" />}
+                label="Escanear"
+                onPress={() => router.push('/(modals)/scan?mode=product' as never)}
               />
             )}
           </View>
         )}
 
         {/* Sales widget */}
-        {!noModules && canSales && (
+        {!loadingProducts && !noModules && canSales && (
           <SalesWidget
             summary={salesSummary}
+            yesterdaySummary={yesterdaySummary}
             onNewSale={() => router.push('/(modals)/new-sale' as never)}
             onViewAll={() => router.push('/(app)/sales' as never)}
+            onViewStats={() => router.push('/(app)/sales/stats' as never)}
           />
         )}
 
         {/* Notificaciones no leídas */}
-        {!noModules && unreadNotifications.length > 0 && (
+        {!loadingProducts && !noModules && unreadNotifications.length > 0 && (
           <View className="bg-white rounded-2xl overflow-hidden mb-5 border border-blue-100">
             <View className="flex-row items-center justify-between px-4 pt-3.5 pb-2">
               <View className="flex-row items-center gap-2">
                 <Bell size={13} color="#208AEF" />
-                <Text className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                  Sin leer
-                </Text>
+                <Text className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Sin leer</Text>
               </View>
               <TouchableOpacity
                 onPress={() => router.push('/(app)/notifications' as never)}
@@ -586,19 +737,15 @@ export default function DashboardScreen() {
                   i < unreadNotifications.length - 1 ? 'border-b border-blue-100' : ''
                 }`}
               >
-                <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
-                  {n.title}
-                </Text>
-                <Text className="text-xs text-gray-500 mt-0.5 leading-4" numberOfLines={2}>
-                  {n.body}
-                </Text>
+                <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{n.title}</Text>
+                <Text className="text-xs text-gray-500 mt-0.5 leading-4" numberOfLines={2}>{n.body}</Text>
               </View>
             ))}
           </View>
         )}
 
         {/* Sin stock — urgente */}
-        {!noModules && canStock && sinStock.length > 0 && (
+        {!loadingProducts && !noModules && canStock && sinStock.length > 0 && (
           <View className="bg-white rounded-2xl overflow-hidden mb-3 border border-red-100">
             <View className="flex-row items-center justify-between px-4 pt-3.5 pb-2">
               <View className="flex-row items-center gap-2">
@@ -628,9 +775,7 @@ export default function DashboardScreen() {
                   className="flex-row items-center justify-center py-3 gap-1"
                   onPress={() => router.push('/(app)/stock/index' as never)}
                 >
-                  <Text className="text-xs text-red-500 font-medium">
-                    Ver {sinStock.length - 4} más
-                  </Text>
+                  <Text className="text-xs text-red-500 font-medium">Ver {sinStock.length - 4} más</Text>
                   <ChevronRight size={12} color="#EF4444" />
                 </TouchableOpacity>
               )}
@@ -639,7 +784,7 @@ export default function DashboardScreen() {
         )}
 
         {/* Stock bajo */}
-        {!noModules && canStock && stockBajo.length > 0 && (
+        {!loadingProducts && !noModules && canStock && stockBajo.length > 0 && (
           <View className="bg-white rounded-2xl overflow-hidden mb-5 border border-amber-100">
             <View className="flex-row items-center justify-between px-4 pt-3.5 pb-2">
               <View className="flex-row items-center gap-2">
@@ -669,9 +814,7 @@ export default function DashboardScreen() {
                   className="flex-row items-center justify-center py-3 gap-1"
                   onPress={() => router.push('/(app)/stock/index' as never)}
                 >
-                  <Text className="text-xs text-amber-600 font-medium">
-                    Ver {stockBajo.length - 4} más
-                  </Text>
+                  <Text className="text-xs text-amber-600 font-medium">Ver {stockBajo.length - 4} más</Text>
                   <ChevronRight size={12} color="#D97706" />
                 </TouchableOpacity>
               )}
@@ -680,7 +823,7 @@ export default function DashboardScreen() {
         )}
 
         {/* Estado saludable */}
-        {!noModules && allGood && (
+        {!loadingProducts && !noModules && allGood && (
           <View className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex-row items-center gap-2 mb-5">
             <CheckCircle2 size={15} color="#16A34A" />
             <Text className="text-sm text-green-700 font-medium">Todo el stock en orden</Text>
@@ -688,14 +831,14 @@ export default function DashboardScreen() {
         )}
 
         {/* Actividad reciente — solo owner */}
-        {!noModules && isOwner && canStock && movements.length > 0 && (
+        {!loadingProducts && !noModules && isOwner && canStock && movements.length > 0 && (
           <View className="bg-white rounded-2xl overflow-hidden border border-gray-100">
             <View className="flex-row items-center justify-between px-4 pt-3.5 pb-2">
               <Text className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                 Actividad reciente
               </Text>
               <TouchableOpacity
-                onPress={() => router.push('/stock/history' as never)}
+                onPress={() => router.push('/(app)/stock/history' as never)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text className="text-xs text-blue-500 font-medium">Ver historial</Text>

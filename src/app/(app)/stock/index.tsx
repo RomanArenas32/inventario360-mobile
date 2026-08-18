@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -128,7 +129,7 @@ export default function StockScreen() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: products = [] } = useQuery({
+  const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: () => api.get<Product[]>('/products'),
   });
@@ -270,7 +271,11 @@ export default function StockScreen() {
       </View>
 
       {/* List */}
-      <FlatList
+      {isLoading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#208AEF" />
+        </View>
+      ) : <FlatList
         data={filtered}
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => (
@@ -309,7 +314,7 @@ export default function StockScreen() {
             </Text>
           </View>
         }
-      />
+      />}
 
       {/* FAB — only for owners */}
       {isOwner && (

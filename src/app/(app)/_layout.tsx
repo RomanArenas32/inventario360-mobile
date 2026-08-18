@@ -4,8 +4,9 @@ import { useAuthContext } from '@/lib/auth-context';
 import { useModules } from '@/lib/use-modules';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { api } from '@/lib/api';
+import * as Notifications from 'expo-notifications';
 
 const RELOAD_INTERVAL_MS = 5 * 60 * 1000; // refresh at most every 5 min on foreground
 
@@ -13,6 +14,7 @@ export default function AppLayout() {
   const { reloadUser } = useAuthContext();
   const { isOwner, canProducts, canStock, canTurns, canSales } = useModules();
   const lastReloadRef = useRef<number>(Date.now());
+  const pushRegistered = useRef(false);
 
   // Refresh staffModules when app comes to foreground (so staff sees updated modules)
   useEffect(() => {
@@ -24,6 +26,35 @@ export default function AppLayout() {
     });
     return () => sub.remove();
   }, [reloadUser]);
+
+  // Register Expo push token once per session
+  useEffect(() => {
+    if (pushRegistered.current || Platform.OS === 'web') return;
+    pushRegistered.current = true;
+
+    async function registerPushToken() {
+      try {
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let status = existing;
+        if (existing !== 'granted') {
+          const { status: requested } = await Notifications.requestPermissionsAsync();
+          status = requested;
+        }
+        if (status !== 'granted') return;
+
+        const token = await Notifications.getExpoPushTokenAsync({
+          projectId: '5a1a6bda-2436-4d03-8e34-48d42b716b62',
+        });
+        if (token.data) {
+          await api.post('/users/me/push-token', { token: token.data });
+        }
+      } catch {
+        // Non-critical — silently ignore push token errors
+      }
+    }
+
+    void registerPushToken();
+  }, []);
 
   const hideProducts = !canProducts;
   const hideStock = !canStock;
@@ -113,6 +144,7 @@ export default function AppLayout() {
       {/* Pantallas sin tab */}
       <Tabs.Screen name="categories/index" options={{ href: null }} />
       <Tabs.Screen name="stock/history" options={{ href: null }} />
+      <Tabs.Screen name="turns/history" options={{ href: null }} />
     </Tabs>
   );
 }

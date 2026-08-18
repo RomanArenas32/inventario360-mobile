@@ -20,7 +20,8 @@ export function useFocusRefresh(keys: QueryKey[], staleMs = 30_000) {
       for (const key of keysRef.current) {
         const state = queryClient.getQueryState(key);
         const age = state?.dataUpdatedAt ? now - state.dataUpdatedAt : Infinity;
-        if (age >= staleMs) {
+        // Also refetch if the query was explicitly invalidated by another screen
+        if (age >= staleMs || state?.isInvalidated) {
           void queryClient.invalidateQueries({ queryKey: key });
         }
       }

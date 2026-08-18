@@ -50,14 +50,20 @@ export type PaymentMethod = 'cash' | 'card' | 'transfer';
 
 export type SaleItem = {
   id: string;
-  product: { id: string; name: string; code: string | null };
+  productId: string | null;
+  product: { id: string; name: string; code: string | null } | null;
+  description: string | null;
   quantity: number;
   unitPrice: number;
+  costPrice: number;
+  refundedQuantity: number;
 };
 
 export type Sale = {
   id: string;
+  saleNumber: number;
   total: number;
+  discount: number;
   profit: number | null;
   paymentMethod: PaymentMethod;
   notes: string | null;
@@ -83,6 +89,13 @@ export type TopProduct = {
   revenue: number;
 };
 
+export type MonthlyChartData = {
+  month: number;
+  total: number;
+  profit: number;
+  count: number;
+};
+
 // ─── Turns ────────────────────────────────────────────────────────────────────
 
 export type TurnStatus = 'pending' | 'in_progress' | 'done' | 'cancelled' | 'no_show';
@@ -93,7 +106,9 @@ export type Turn = {
   clientPhone: string | null;
   service: string;
   startTime: string | null; // ISO datetime — null = sin hora (cola de espera)
+  date: string;             // YYYY-MM-DD
   duration: number;         // minutos
+  price: number | null;
   status: TurnStatus;
   assignedUser: { id: string; name: string } | null;
   notes: string | null;

@@ -1,12 +1,12 @@
 import {
-  View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, ScrollView,
+  View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, ScrollView, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useFocusRefresh } from '@/lib/use-focus-refresh';
-import { Plus, ShoppingCart } from 'lucide-react-native';
+import { Plus, ShoppingCart, BarChart2, Search, X } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import type { Sale, SalesSummary, TopProduct, PaymentMethod, PaginatedResult } from '@/lib/types';
 
@@ -146,6 +146,8 @@ function SaleRow({ sale, onPress }: { sale: Sale; onPress: () => void }) {
     >
       <View className="flex-1 mr-3">
         <View className="flex-row items-center gap-2 mb-1">
+          <Text className="text-xs text-gray-400 font-mono">#{String(sale.saleNumber).padStart(4, '0')}</Text>
+          <Text className="text-xs text-gray-300">·</Text>
           <Text className="text-xs text-gray-400">{formatTime(sale.createdAt)}</Text>
           <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: pm.bg }}>
             <Text className="text-xs font-medium" style={{ color: pm.text }}>{pm.label}</Text>
@@ -167,10 +169,33 @@ function SaleRow({ sale, onPress }: { sale: Sale; onPress: () => void }) {
 
 const LIMIT = 20;
 
+type PmFilter = PaymentMethod | 'all';
+
+const PM_FILTER_OPTIONS: { key: PmFilter; label: string }[] = [
+  { key: 'all',      label: 'Todos' },
+  { key: 'cash',     label: 'Efectivo' },
+  { key: 'card',     label: 'Tarjeta' },
+  { key: 'transfer', label: 'Transferencia' },
+];
+
+function useDebounce(value: string, delay: number) {
+  const [debounced, setDebounced] = useState(value);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setDebounced(value), delay);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function SalesScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<Period>('today');
+  const [pmFilter, setPmFilter] = useState<PmFilter>('all');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
   const [refreshing, setRefreshing] = useState(false);
 
   useFocusRefresh([
@@ -190,11 +215,17 @@ export default function SalesScreen() {
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['sales', period],
-    queryFn: ({ pageParam = 0 }) =>
-      api.get<PaginatedResult<Sale>>(
-        `/sales?limit=${LIMIT}&offset=${pageParam as number}&period=${period}`,
-      ),
+    queryKey: ['sales', period, pmFilter, debouncedSearch],
+    queryFn: ({ pageParam = 0 }) => {
+      const params = new URLSearchParams({
+        limit: String(LIMIT),
+        offset: String(pageParam as number),
+        period,
+      });
+      if (pmFilter !== 'all') params.set('paymentMethod', pmFilter);
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+      return api.get<PaginatedResult<Sale>>(`/sales?${params.toString()}`);
+    },
     initialPageParam: 0,
     getNextPageParam: (last) => (last.hasMore ? last.offset + last.limit : undefined),
   });
@@ -215,7 +246,15 @@ export default function SalesScreen() {
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
       <View className="px-4 pt-6 pb-3">
-        <Text className="text-2xl font-bold text-gray-900 mb-4">Ventas</Text>
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-2xl font-bold text-gray-900">Ventas</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/(app)/sales/stats' as never)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <BarChart2 size={22} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
 
         {/* Period chips — horizontal scroll */}
         <ScrollView
@@ -254,6 +293,41 @@ export default function SalesScreen() {
 
         {/* Payment method breakdown */}
         {summary && <PaymentBreakdown byPaymentMethod={summary.byPaymentMethod} />}
+
+        {/* Search bar */}
+        <View className="flex-row items-center bg-white border border-gray-200 rounded-xl px-3 mt-3 gap-2">
+          <Search size={14} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 py-2.5 text-sm text-gray-900"
+            placeholder="Buscar por producto..."
+            placeholderTextColor="#9CA3AF"
+            value={search}
+            onChangeText={setSearch}
+            clearButtonMode="while-editing"
+            autoCorrect={false}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <X size={14} color="#9CA3AF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Payment method filter */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2" contentContainerStyle={{ paddingRight: 4 }}>
+          {PM_FILTER_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              onPress={() => setPmFilter(opt.key)}
+              className={`px-3 py-1.5 rounded-full border mr-2 ${pmFilter === opt.key ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-200'}`}
+              activeOpacity={0.7}
+            >
+              <Text className={`text-xs font-medium ${pmFilter === opt.key ? 'text-white' : 'text-gray-600'}`}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Sales list */}
@@ -305,11 +379,22 @@ export default function SalesScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <View className="items-center justify-center py-16">
+            <View className="items-center justify-center py-16 px-8">
               <ShoppingCart size={40} color="#D1D5DB" />
-              <Text className="text-gray-400 mt-3 text-sm">
-                Sin ventas {PERIOD_OPTIONS.find((o) => o.key === period)?.label.toLowerCase()}
+              <Text className="text-gray-400 mt-3 text-sm text-center">
+                {search || pmFilter !== 'all'
+                  ? 'Sin resultados para esta búsqueda'
+                  : `Sin ventas ${PERIOD_OPTIONS.find((o) => o.key === period)?.label.toLowerCase() ?? ''}`}
               </Text>
+              {!search && pmFilter === 'all' && (
+                <TouchableOpacity
+                  onPress={() => router.push('/(modals)/new-sale' as never)}
+                  className="mt-4 bg-blue-500 px-5 py-2.5 rounded-full"
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-white text-sm font-semibold">Registrar venta</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />

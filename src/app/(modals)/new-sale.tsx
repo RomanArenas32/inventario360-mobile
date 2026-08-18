@@ -1,12 +1,12 @@
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
-  ActivityIndicator, StyleSheet, Alert,
+  ActivityIndicator, StyleSheet, Alert, Animated, Modal, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useRef, useMemo } from 'react';
-import { X, Search, ScanLine, ShoppingCart } from 'lucide-react-native';
+import { useState, useRef, useMemo, useEffect } from 'react';
+import { X, Search, ScanLine, ShoppingCart, CheckCircle, CalendarDays, ChevronLeft, ChevronRight, Scissors, Plus, Minus } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { api } from '@/lib/api';
 import type { Product, PaymentMethod } from '@/lib/types';
@@ -19,9 +19,15 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: 'transfer', label: 'Transferencia' },
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const PM_COLORS: Record<PaymentMethod, string> = {
+  cash:     '#16A34A',
+  card:     '#2563EB',
+  transfer: '#7C3AED',
+};
 
-type CartItem = { product: Product; quantity: number };
+type ProductCartItem = { kind: 'product'; product: Product; quantity: number };
+type ServiceCartItem = { kind: 'service'; id: string; description: string; unitPrice: number; quantity: number };
+type CartEntry = ProductCartItem | ServiceCartItem;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,49 +35,491 @@ function formatCurrency(v: number) {
   return `$${Math.round(v).toLocaleString('es-AR')}`;
 }
 
-// ─── Cart item row ─────────────────────────────────────────────────────────────
+function entryKey(e: CartEntry): string {
+  return e.kind === 'product' ? `p-${e.product.id}` : `s-${e.id}`;
+}
+
+// ─── Success overlay ──────────────────────────────────────────────────────────
+
+function SuccessOverlay({
+  total,
+  itemCount,
+  paymentMethod,
+  customDate,
+}: {
+  total: number;
+  itemCount: number;
+  paymentMethod: PaymentMethod;
+  customDate?: Date;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 80, friction: 8 }),
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const pmLabel = PAYMENT_METHODS.find((p) => p.value === paymentMethod)?.label ?? '';
+  const color = PM_COLORS[paymentMethod];
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity }]}
+      className="bg-white items-center justify-center px-8"
+    >
+      <Animated.View style={{ transform: [{ scale }] }} className="items-center">
+        <View className="w-24 h-24 rounded-full bg-green-50 items-center justify-center mb-5">
+          <CheckCircle size={56} color="#16A34A" />
+        </View>
+        <Text className="text-2xl font-bold text-gray-900 mb-1">¡Venta registrada!</Text>
+        <Text className="text-4xl font-bold text-gray-900 mb-4">{formatCurrency(total)}</Text>
+        <View className="flex-row items-center gap-3 flex-wrap justify-center">
+          <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: color + '18' }}>
+            <Text className="text-sm font-semibold" style={{ color }}>{pmLabel}</Text>
+          </View>
+          <Text className="text-sm text-gray-400">
+            {itemCount} ítem{itemCount !== 1 ? 's' : ''}
+          </Text>
+          {customDate && (
+            <View className="bg-amber-50 px-3 py-1.5 rounded-full">
+              <Text className="text-xs font-semibold text-amber-700">
+                {customDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// ─── Product cart row ─────────────────────────────────────────────────────────
 
 function CartRow({
   item,
   onIncrease,
   onDecrease,
+  onSetQty,
+  stockWarning,
 }: {
-  item: CartItem;
+  item: ProductCartItem;
   onIncrease: () => void;
   onDecrease: () => void;
+  onSetQty: (qty: number) => void;
+  stockWarning: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [qtyText, setQtyText] = useState(String(item.quantity));
   const subtotal = item.quantity * (item.product.salePrice ?? 0);
+  const atLimit = item.quantity >= item.product.stock;
+
+  function commitQty() {
+    const n = parseInt(qtyText, 10);
+    if (n > 0 && Number.isInteger(n)) {
+      onSetQty(Math.min(n, item.product.stock));
+    } else {
+      setQtyText(String(item.quantity));
+    }
+    setEditing(false);
+  }
+
   return (
-    <View className="flex-row items-center px-4 py-3 border-b border-gray-100">
-      <View className="flex-1 mr-3">
-        <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-          {item.product.name}
-        </Text>
-        <Text className="text-xs text-gray-400 mt-0.5">
-          {item.product.salePrice ? `${formatCurrency(item.product.salePrice)} c/u` : 'Sin precio'}
+    <View className="border-b border-gray-100">
+      <View className="flex-row items-center px-4 py-3">
+        <View className="flex-1 mr-3">
+          <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+            {item.product.name}
+          </Text>
+          <Text className="text-xs text-gray-400 mt-0.5">
+            {item.product.salePrice ? `${formatCurrency(item.product.salePrice)} c/u` : 'Sin precio'}
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-2 mr-3">
+          <TouchableOpacity
+            onPress={onDecrease}
+            className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
+            activeOpacity={0.7}
+          >
+            <Text className="text-base font-semibold text-gray-700 leading-none">−</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => { setEditing(true); setQtyText(String(item.quantity)); }}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            {editing ? (
+              <TextInput
+                autoFocus
+                value={qtyText}
+                onChangeText={setQtyText}
+                onBlur={commitQty}
+                onSubmitEditing={commitQty}
+                keyboardType="number-pad"
+                className="text-sm font-bold text-gray-900 text-center border-b border-blue-400 w-8"
+              />
+            ) : (
+              <Text className="text-sm font-bold text-gray-900 w-8 text-center underline decoration-dotted">
+                {item.quantity}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={onIncrease}
+            disabled={atLimit}
+            className={`w-7 h-7 rounded-full items-center justify-center ${atLimit ? 'bg-gray-50' : 'bg-gray-100'}`}
+            activeOpacity={0.7}
+          >
+            <Text className={`text-base font-semibold leading-none ${atLimit ? 'text-gray-300' : 'text-gray-700'}`}>+</Text>
+          </TouchableOpacity>
+        </View>
+        <Text className="text-sm font-bold text-gray-900 w-16 text-right">
+          {formatCurrency(subtotal)}
         </Text>
       </View>
-      <View className="flex-row items-center gap-2 mr-3">
-        <TouchableOpacity
-          onPress={onDecrease}
-          className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
-          activeOpacity={0.7}
-        >
-          <Text className="text-base font-semibold text-gray-700 leading-none">−</Text>
-        </TouchableOpacity>
-        <Text className="text-sm font-bold text-gray-900 w-5 text-center">{item.quantity}</Text>
-        <TouchableOpacity
-          onPress={onIncrease}
-          className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
-          activeOpacity={0.7}
-        >
-          <Text className="text-base font-semibold text-gray-700 leading-none">+</Text>
-        </TouchableOpacity>
-      </View>
-      <Text className="text-sm font-bold text-gray-900 w-16 text-right">
-        {formatCurrency(subtotal)}
-      </Text>
+
+      {stockWarning && (
+        <View className="mx-4 mb-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+          <Text className="text-xs text-amber-700 font-medium">
+            Stock máximo: {item.product.stock} unidad{item.product.stock !== 1 ? 'es' : ''}
+          </Text>
+        </View>
+      )}
     </View>
+  );
+}
+
+// ─── Service cart row ─────────────────────────────────────────────────────────
+
+function ServiceRow({
+  item,
+  onIncrease,
+  onDecrease,
+  onRemove,
+}: {
+  item: ServiceCartItem;
+  onIncrease: () => void;
+  onDecrease: () => void;
+  onRemove: () => void;
+}) {
+  const subtotal = item.quantity * item.unitPrice;
+
+  return (
+    <View className="border-b border-gray-100">
+      <View className="flex-row items-center px-4 py-3">
+        <View className="w-6 h-6 rounded-full bg-purple-100 items-center justify-center mr-3">
+          <Scissors size={12} color="#7C3AED" />
+        </View>
+        <View className="flex-1 mr-3">
+          <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+            {item.description}
+          </Text>
+          <Text className="text-xs text-purple-500 mt-0.5">
+            {formatCurrency(item.unitPrice)} c/u · Servicio
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-2 mr-3">
+          <TouchableOpacity
+            onPress={onDecrease}
+            className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
+            activeOpacity={0.7}
+          >
+            <Text className="text-base font-semibold text-gray-700 leading-none">−</Text>
+          </TouchableOpacity>
+          <Text className="text-sm font-bold text-gray-900 w-8 text-center">{item.quantity}</Text>
+          <TouchableOpacity
+            onPress={onIncrease}
+            className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
+            activeOpacity={0.7}
+          >
+            <Text className="text-base font-semibold text-gray-700 leading-none">+</Text>
+          </TouchableOpacity>
+        </View>
+        <View className="items-end">
+          <Text className="text-sm font-bold text-gray-900 w-16 text-right">
+            {formatCurrency(subtotal)}
+          </Text>
+          <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} className="mt-1">
+            <Text className="text-xs text-red-400">quitar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Add service modal ────────────────────────────────────────────────────────
+
+function AddServiceModal({
+  visible,
+  onClose,
+  onAdd,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (item: Omit<ServiceCartItem, 'kind'>) => void;
+}) {
+  const [desc, setDesc] = useState('');
+  const [price, setPrice] = useState('');
+  const [qty, setQty] = useState(1);
+  const [error, setError] = useState('');
+
+  function reset() { setDesc(''); setPrice(''); setQty(1); setError(''); }
+
+  function handleAdd() {
+    if (!desc.trim()) { setError('Ingresá una descripción del servicio'); return; }
+    const p = parseFloat(price.replace(',', '.'));
+    if (!price.trim() || isNaN(p) || p < 0) { setError('Ingresá un precio válido'); return; }
+    onAdd({ id: String(Date.now()), description: desc.trim(), unitPrice: p, quantity: qty });
+    reset();
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
+          <TouchableOpacity onPress={() => { reset(); onClose(); }}>
+            <X size={22} color="#6B7280" />
+          </TouchableOpacity>
+          <Text className="text-base font-semibold text-gray-900">Agregar servicio</Text>
+          <TouchableOpacity onPress={handleAdd}>
+            <Text className="text-blue-500 font-semibold text-base">Agregar</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView className="flex-1 px-4 pt-5" keyboardShouldPersistTaps="handled">
+          <Text className="text-xs text-gray-400 mb-4">
+            Servicios sin stock — útil para barbería, peluquería, reparaciones, etc.
+          </Text>
+
+          <View className="mb-4">
+            <Text className="text-sm font-medium text-gray-700 mb-1.5">Descripción del servicio</Text>
+            <TextInput
+              className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
+              value={desc}
+              onChangeText={setDesc}
+              placeholder="Ej: Corte de cabello, Manicura..."
+              placeholderTextColor="#9CA3AF"
+              autoFocus
+              autoCapitalize="sentences"
+              maxLength={200}
+            />
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-sm font-medium text-gray-700 mb-1.5">Precio unitario</Text>
+            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4">
+              <Text className="text-gray-400 mr-1">$</Text>
+              <TextInput
+                className="flex-1 py-3 text-gray-900 text-base"
+                value={price}
+                onChangeText={setPrice}
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-sm font-medium text-gray-700 mb-1.5">Cantidad</Text>
+            <View className="flex-row items-center gap-4">
+              <TouchableOpacity
+                onPress={() => setQty((q) => Math.max(1, q - 1))}
+                className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                activeOpacity={0.7}
+              >
+                <Minus size={16} color="#374151" />
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-900 w-8 text-center">{qty}</Text>
+              <TouchableOpacity
+                onPress={() => setQty((q) => q + 1)}
+                className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                activeOpacity={0.7}
+              >
+                <Plus size={16} color="#374151" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {error ? (
+            <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <Text className="text-sm text-red-600">{error}</Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+// ─── Calendar picker ─────────────────────────────────────────────────────────
+
+const MONTH_NAMES = [
+  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+];
+const DAY_NAMES = ['L','M','X','J','V','S','D'];
+
+function isSameDay(a: Date, b: Date) {
+  return a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+}
+
+function CalendarPicker({
+  value,
+  onChange,
+}: {
+  value: Date;
+  onChange: (d: Date) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  const [viewYear, setViewYear]   = useState(value.getFullYear());
+  const [viewMonth, setViewMonth] = useState(value.getMonth());
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  }
+  function nextMonth() {
+    const limit = today.getMonth() === viewMonth && today.getFullYear() === viewYear;
+    if (limit) return;
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
+  }
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const offset = (firstDow + 6) % 7;
+  const cells: (number | null)[] = [
+    ...Array(offset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const isToday    = (day: number) => isSameDay(new Date(viewYear, viewMonth, day), new Date());
+  const isSelected = (day: number) => isSameDay(new Date(viewYear, viewMonth, day), value);
+  const isFuture   = (day: number) => new Date(viewYear, viewMonth, day) > today;
+
+  const atNextLimit = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+
+  const displayLabel = isSameDay(value, new Date())
+    ? 'Hoy'
+    : value.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => { setViewYear(value.getFullYear()); setViewMonth(value.getMonth()); setOpen(true); }}
+        className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200"
+        activeOpacity={0.7}
+      >
+        <CalendarDays size={14} color={isSameDay(value, new Date()) ? '#9CA3AF' : '#2563EB'} />
+        <Text
+          className="text-xs font-semibold"
+          style={{ color: isSameDay(value, new Date()) ? '#6B7280' : '#2563EB' }}
+        >
+          {displayLabel}
+        </Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade">
+        <TouchableOpacity
+          className="flex-1 bg-black/50"
+          activeOpacity={1}
+          onPress={() => setOpen(false)}
+        />
+        <View className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl pb-8">
+          <View className="flex-row items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+            <Text className="text-base font-semibold text-gray-900">Fecha de la venta</Text>
+            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <X size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+
+          <View className="flex-row items-center justify-between px-5 py-3">
+            <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <ChevronLeft size={22} color="#374151" />
+            </TouchableOpacity>
+            <Text className="text-sm font-bold text-gray-900">
+              {MONTH_NAMES[viewMonth]} {viewYear}
+            </Text>
+            <TouchableOpacity
+              onPress={nextMonth}
+              disabled={atNextLimit}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronRight size={22} color={atNextLimit ? '#D1D5DB' : '#374151'} />
+            </TouchableOpacity>
+          </View>
+
+          <View className="flex-row px-4 pb-1">
+            {DAY_NAMES.map((d) => (
+              <Text key={d} className="flex-1 text-center text-xs font-semibold text-gray-400">{d}</Text>
+            ))}
+          </View>
+
+          <View className="px-4 pb-4">
+            {Array.from({ length: cells.length / 7 }, (_, row) => (
+              <View key={row} className="flex-row">
+                {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
+                  if (!day) return <View key={col} className="flex-1 h-9" />;
+                  const selected = isSelected(day);
+                  const future = isFuture(day);
+                  const todayMark = isToday(day);
+                  return (
+                    <TouchableOpacity
+                      key={col}
+                      onPress={() => {
+                        if (future) return;
+                        onChange(new Date(viewYear, viewMonth, day, 12, 0, 0, 0));
+                        setOpen(false);
+                      }}
+                      disabled={future}
+                      className="flex-1 h-9 items-center justify-center"
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        className={`w-8 h-8 rounded-full items-center justify-center ${
+                          selected ? 'bg-blue-500' : todayMark ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm font-medium ${
+                            future   ? 'text-gray-300' :
+                            selected ? 'text-white font-bold' :
+                            todayMark ? 'text-blue-600 font-semibold' :
+                            'text-gray-800'
+                          }`}
+                        >
+                          {day}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+
+          {!isSameDay(value, new Date()) && (
+            <TouchableOpacity
+              onPress={() => { onChange(new Date()); setOpen(false); }}
+              className="mx-5 py-3 rounded-xl bg-gray-100 items-center mb-2"
+              activeOpacity={0.7}
+            >
+              <Text className="text-sm font-semibold text-gray-700">Volver a Hoy</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -82,13 +530,35 @@ export default function NewSaleScreen() {
   const queryClient = useQueryClient();
   const [permission, requestPermission] = useCameraPermissions();
 
+  const params = useLocalSearchParams<{ service?: string; servicePrice?: string }>();
+
   const [search, setSearch] = useState('');
   const [scanMode, setScanMode] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<ProductCartItem[]>([]);
+  const [serviceItems, setServiceItems] = useState<ServiceCartItem[]>([]);
+  const [showAddService, setShowAddService] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [saleDate, setSaleDate] = useState<Date>(new Date());
+  const [discountPct, setDiscountPct] = useState('');
+  const [notes, setNotes] = useState('');
+  const [received, setReceived] = useState('');
+  const [showExtras, setShowExtras] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [stockWarningId, setStockWarningId] = useState<string | null>(null);
+  const [successData, setSuccessData] = useState<{ total: number; itemCount: number; paymentMethod: PaymentMethod; isCustomDate: boolean } | null>(null);
   const scanning = useRef(false);
+
+  // Pre-fill service item from turn params
+  useEffect(() => {
+    if (params.service && params.servicePrice) {
+      const price = parseFloat(params.servicePrice);
+      if (!isNaN(price) && price > 0) {
+        setServiceItems([{ kind: 'service', id: String(Date.now()), description: params.service, unitPrice: price, quantity: 1 }]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
@@ -97,30 +567,98 @@ export default function NewSaleScreen() {
 
   // ─── Cart operations ────────────────────────────────────────────────────────
 
-  function addToCart(product: Product) {
+  function doAddToCart(product: Product) {
     setCart((prev) => {
       const found = prev.find((i) => i.product.id === product.id);
       if (found) {
+        if (found.quantity >= product.stock) {
+          setStockWarningId(product.id);
+          setTimeout(() => setStockWarningId(null), 2500);
+          return prev;
+        }
         return prev.map((i) =>
           i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { kind: 'product', product, quantity: 1 }];
     });
     setSearch('');
-    setScanMode(false);
   }
 
-  function changeQty(productId: string, delta: number) {
+  function addToCart(product: Product) {
+    if (!product.salePrice) {
+      Alert.alert(
+        'Sin precio de venta',
+        `"${product.name}" no tiene precio configurado. Se sumará $0 al total.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Agregar igual', onPress: () => doAddToCart(product) },
+        ],
+      );
+      return;
+    }
+    doAddToCart(product);
+  }
+
+  function increaseQty(productId: string) {
     setCart((prev) => {
-      return prev
-        .map((i) => i.product.id === productId ? { ...i, quantity: i.quantity + delta } : i)
-        .filter((i) => i.quantity > 0);
+      const item = prev.find((i) => i.product.id === productId);
+      if (item && item.quantity >= item.product.stock) {
+        setStockWarningId(productId);
+        setTimeout(() => setStockWarningId(null), 2500);
+        return prev;
+      }
+      return prev.map((i) =>
+        i.product.id === productId ? { ...i, quantity: i.quantity + 1 } : i,
+      );
     });
   }
 
-  const total = cart.reduce((sum, i) => sum + i.quantity * (i.product.salePrice ?? 0), 0);
-  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
+  function decreaseQty(productId: string) {
+    setCart((prev) =>
+      prev
+        .map((i) => i.product.id === productId ? { ...i, quantity: i.quantity - 1 } : i)
+        .filter((i) => i.quantity > 0),
+    );
+  }
+
+  function setQty(productId: string, qty: number) {
+    setCart((prev) =>
+      prev
+        .map((i) => i.product.id === productId ? { ...i, quantity: qty } : i)
+        .filter((i) => i.quantity > 0),
+    );
+  }
+
+  function addServiceItem(item: Omit<ServiceCartItem, 'kind'>) {
+    setServiceItems((prev) => [...prev, { kind: 'service', ...item }]);
+  }
+
+  function removeServiceItem(id: string) {
+    setServiceItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  function increaseServiceQty(id: string) {
+    setServiceItems((prev) => prev.map((i) => i.id === id ? { ...i, quantity: i.quantity + 1 } : i));
+  }
+
+  function decreaseServiceQty(id: string) {
+    setServiceItems((prev) =>
+      prev
+        .map((i) => i.id === id ? { ...i, quantity: i.quantity - 1 } : i)
+        .filter((i) => i.quantity > 0),
+    );
+  }
+
+  const productSubtotal = cart.reduce((sum, i) => sum + i.quantity * (i.product.salePrice ?? 0), 0);
+  const serviceSubtotal = serviceItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const subtotal = productSubtotal + serviceSubtotal;
+  const discountNum = Math.min(100, Math.max(0, parseFloat(discountPct) || 0));
+  const discountAmount = discountNum > 0 ? Math.round(subtotal * discountNum) / 100 : 0;
+  const total = subtotal - discountAmount;
+  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0) + serviceItems.reduce((sum, i) => sum + i.quantity, 0);
+  const receivedNum = parseFloat(received) || 0;
+  const change = paymentMethod === 'cash' && receivedNum > 0 ? receivedNum - total : null;
 
   // ─── Search results ─────────────────────────────────────────────────────────
 
@@ -133,7 +671,7 @@ export default function NewSaleScreen() {
           p.isActive &&
           (p.name.toLowerCase().includes(q) || (p.code?.toLowerCase().includes(q) ?? false)),
       )
-      .slice(0, 7);
+      .slice(0, 10);
   }, [products, search]);
 
   // ─── Barcode scanner ────────────────────────────────────────────────────────
@@ -154,13 +692,11 @@ export default function NewSaleScreen() {
     if (scanning.current) return;
     scanning.current = true;
     const product = products.find(
-      (p) =>
-        p.isActive &&
-        p.code?.trim().toLowerCase() === data.trim().toLowerCase(),
+      (p) => p.isActive && p.code?.trim().toLowerCase() === data.trim().toLowerCase(),
     );
     if (product) {
       addToCart(product);
-      scanning.current = false;
+      setTimeout(() => { scanning.current = false; }, 1000);
     } else {
       Alert.alert(
         'Código no encontrado',
@@ -170,29 +706,63 @@ export default function NewSaleScreen() {
     }
   }
 
+  // ─── Close with confirmation ─────────────────────────────────────────────────
+
+  function handleClose() {
+    if (cart.length === 0 && serviceItems.length === 0) { router.back(); return; }
+    Alert.alert(
+      'Descartar venta',
+      '¿Salir? Se perderán los ítems del carrito.',
+      [
+        { text: 'Seguir cargando', style: 'cancel' },
+        { text: 'Descartar', style: 'destructive', onPress: () => router.back() },
+      ],
+    );
+  }
+
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   async function handleConfirm() {
-    if (cart.length === 0) return;
+    if (cart.length === 0 && serviceItems.length === 0) return;
     setSubmitting(true);
     setError('');
     try {
+      const today = new Date();
+      const isCustomDate = !isSameDay(saleDate, today);
       await api.post('/sales', {
-        items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+        items: [
+          ...cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+          ...serviceItems.map((i) => ({ description: i.description, unitPrice: i.unitPrice, quantity: i.quantity })),
+        ],
         paymentMethod,
+        ...(discountNum > 0 ? { discountPct: discountNum } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(isCustomDate ? { customDate: saleDate.toISOString() } : {}),
       });
-      await queryClient.invalidateQueries({ queryKey: ['sales'], refetchType: 'all' });
-      await queryClient.invalidateQueries({ queryKey: ['sales-summary'], refetchType: 'all' });
-      await queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'all' });
-      router.back();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['sales'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['sales-summary'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['sales-top'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['sales-monthly-chart'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['sales-monthly-summary'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['products'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['stock-movements-recent'], refetchType: 'all' }),
+      ]);
+      setSuccessData({ total, itemCount: totalItems, paymentMethod, isCustomDate: !isSameDay(saleDate, new Date()) });
+      setTimeout(() => router.back(), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la venta');
-    } finally {
       setSubmitting(false);
     }
   }
 
-  const canConfirm = cart.length > 0 && !submitting;
+  const canConfirm = (cart.length > 0 || serviceItems.length > 0) && !submitting && !successData;
+
+  // Combined data for the FlatList
+  const allEntries: CartEntry[] = [
+    ...cart,
+    ...serviceItems,
+  ];
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -201,25 +771,13 @@ export default function NewSaleScreen() {
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleClose}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <X size={22} color="#6B7280" />
         </TouchableOpacity>
         <Text className="text-base font-semibold text-gray-900">Nueva venta</Text>
-        <TouchableOpacity
-          onPress={() => void handleConfirm()}
-          disabled={!canConfirm}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#208AEF" />
-          ) : (
-            <Text className={`text-base font-semibold ${canConfirm ? 'text-blue-500' : 'text-gray-300'}`}>
-              Confirmar
-            </Text>
-          )}
-        </TouchableOpacity>
+        <View style={{ width: 22 }} />
       </View>
 
       {/* Search bar */}
@@ -262,6 +820,11 @@ export default function NewSaleScreen() {
               <View className="absolute inset-0 items-center justify-center">
                 <View style={styles.scanFrame} />
               </View>
+              <View className="absolute bottom-2 left-0 right-0 items-center">
+                <View className="bg-black/40 px-3 py-1 rounded-full">
+                  <Text className="text-white text-xs">Apuntá al código de barras</Text>
+                </View>
+              </View>
             </>
           ) : (
             <View className="flex-1 items-center justify-center bg-gray-100">
@@ -273,10 +836,7 @@ export default function NewSaleScreen() {
 
       {/* Search results */}
       {searchResults.length > 0 && (
-        <View
-          className="border-b border-gray-200 bg-white"
-          style={{ maxHeight: 240 }}
-        >
+        <View className="border-b border-gray-200 bg-white" style={{ maxHeight: 240 }}>
           <FlatList
             data={searchResults}
             keyExtractor={(p) => p.id}
@@ -296,9 +856,13 @@ export default function NewSaleScreen() {
                   ) : null}
                 </View>
                 <View className="items-end">
-                  <Text className="text-sm font-semibold text-gray-900">
-                    {item.salePrice ? formatCurrency(item.salePrice) : '—'}
-                  </Text>
+                  {item.salePrice ? (
+                    <Text className="text-sm font-semibold text-gray-900">{formatCurrency(item.salePrice)}</Text>
+                  ) : (
+                    <View className="bg-amber-100 px-2 py-0.5 rounded-full">
+                      <Text className="text-xs text-amber-700 font-medium">Sin precio</Text>
+                    </View>
+                  )}
                   <Text className="text-xs text-gray-400 mt-0.5">Stock: {item.stock}</Text>
                 </View>
               </TouchableOpacity>
@@ -309,16 +873,14 @@ export default function NewSaleScreen() {
 
       {/* Cart */}
       <FlatList
-        data={cart}
-        keyExtractor={(i) => i.product.id}
+        data={allEntries}
+        keyExtractor={entryKey}
         keyboardShouldPersistTaps="handled"
         style={{ flex: 1 }}
         ListHeaderComponent={
-          cart.length > 0 ? (
+          allEntries.length > 0 ? (
             <View className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex-row justify-between">
-              <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-                Carrito
-              </Text>
+              <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide">Carrito</Text>
               <Text className="text-xs text-gray-500 font-medium uppercase tracking-wide">
                 {totalItems} ítem{totalItems !== 1 ? 's' : ''}
               </Text>
@@ -333,60 +895,155 @@ export default function NewSaleScreen() {
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <CartRow
-            item={item}
-            onIncrease={() => changeQty(item.product.id, 1)}
-            onDecrease={() => changeQty(item.product.id, -1)}
-          />
-        )}
+        ListFooterComponent={
+          <TouchableOpacity
+            onPress={() => setShowAddService(true)}
+            className="flex-row items-center gap-2 px-4 py-3.5 border-t border-gray-100"
+            activeOpacity={0.7}
+          >
+            <View className="w-6 h-6 rounded-full bg-purple-100 items-center justify-center">
+              <Scissors size={12} color="#7C3AED" />
+            </View>
+            <Text className="text-sm text-purple-600 font-medium">Agregar servicio</Text>
+          </TouchableOpacity>
+        }
+        renderItem={({ item: entry }) => {
+          if (entry.kind === 'product') {
+            return (
+              <CartRow
+                item={entry}
+                onIncrease={() => increaseQty(entry.product.id)}
+                onDecrease={() => decreaseQty(entry.product.id)}
+                onSetQty={(qty) => setQty(entry.product.id, qty)}
+                stockWarning={stockWarningId === entry.product.id}
+              />
+            );
+          }
+          return (
+            <ServiceRow
+              item={entry}
+              onIncrease={() => increaseServiceQty(entry.id)}
+              onDecrease={() => decreaseServiceQty(entry.id)}
+              onRemove={() => removeServiceItem(entry.id)}
+            />
+          );
+        }}
       />
 
       {/* Payment + Total + Confirm */}
       <View className="border-t border-gray-100 px-4 pt-3 pb-4 bg-white">
+        {/* Date + Extras toggle */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <CalendarPicker value={saleDate} onChange={setSaleDate} />
+          <TouchableOpacity
+            onPress={() => setShowExtras((v) => !v)}
+            className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border ${showExtras ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}
+            activeOpacity={0.7}
+          >
+            <Text className={`text-xs font-semibold ${showExtras ? 'text-blue-600' : 'text-gray-500'}`}>
+              {discountNum > 0 || notes.trim() ? '• Extras' : 'Extras'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Extras panel */}
+        {showExtras && (
+          <View className="bg-gray-50 rounded-2xl p-3 mb-3 gap-3">
+            <View className="flex-row items-center gap-2">
+              <Text className="text-xs font-medium text-gray-600 w-20">Descuento %</Text>
+              <View className="flex-1 flex-row items-center bg-white border border-gray-200 rounded-xl px-3">
+                <TextInput
+                  className="flex-1 py-2 text-sm text-gray-900"
+                  value={discountPct}
+                  onChangeText={(t) => { if (/^\d{0,3}$/.test(t)) setDiscountPct(t); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                />
+                <Text className="text-xs text-gray-400">%</Text>
+              </View>
+              {discountAmount > 0 && (
+                <Text className="text-xs font-semibold text-red-500">−{formatCurrency(discountAmount)}</Text>
+              )}
+            </View>
+            <View>
+              <Text className="text-xs font-medium text-gray-600 mb-1">Notas</Text>
+              <TextInput
+                className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900"
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Observaciones de la venta..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={2}
+                textAlignVertical="top"
+                maxLength={255}
+              />
+            </View>
+          </View>
+        )}
+
         {/* Payment method */}
         <View className="flex-row gap-2 mb-3">
           {PAYMENT_METHODS.map((pm) => (
             <TouchableOpacity
               key={pm.value}
-              onPress={() => setPaymentMethod(pm.value)}
+              onPress={() => { setPaymentMethod(pm.value); setReceived(''); }}
               className={`flex-1 py-2.5 rounded-xl border items-center ${
-                paymentMethod === pm.value
-                  ? 'bg-blue-500 border-blue-500'
-                  : 'bg-white border-gray-200'
+                paymentMethod === pm.value ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-200'
               }`}
               activeOpacity={0.7}
             >
-              <Text
-                className={`text-xs font-semibold ${
-                  paymentMethod === pm.value ? 'text-white' : 'text-gray-600'
-                }`}
-              >
+              <Text className={`text-xs font-semibold ${paymentMethod === pm.value ? 'text-white' : 'text-gray-600'}`}>
                 {pm.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Error */}
+        {/* Change calculator (cash only) */}
+        {paymentMethod === 'cash' && (
+          <View className="flex-row items-center gap-2 mb-3">
+            <View className="flex-1 flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3">
+              <Text className="text-xs text-gray-400 mr-1">Recibido $</Text>
+              <TextInput
+                className="flex-1 py-2 text-sm text-gray-900 font-semibold"
+                value={received}
+                onChangeText={setReceived}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+            {change !== null && (
+              <View className={`flex-row items-center gap-1 px-3 py-2 rounded-xl ${change >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                <Text className="text-xs text-gray-500">Vuelto</Text>
+                <Text className={`text-sm font-bold ${change >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  {formatCurrency(Math.abs(change))}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {error ? (
           <View className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
             <Text className="text-xs text-red-600">{error}</Text>
           </View>
         ) : null}
 
-        {/* Total + Confirm */}
         <View className="flex-row items-center gap-3">
           <View>
-            <Text className="text-xs text-gray-400">Total</Text>
+            <Text className="text-xs text-gray-400">{discountAmount > 0 ? 'Con descuento' : 'Total'}</Text>
             <Text className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</Text>
+            {discountAmount > 0 && (
+              <Text className="text-xs text-gray-400 line-through">{formatCurrency(subtotal)}</Text>
+            )}
           </View>
           <TouchableOpacity
             onPress={() => void handleConfirm()}
             disabled={!canConfirm}
-            className={`flex-1 py-4 rounded-2xl items-center ${
-              canConfirm ? 'bg-blue-500' : 'bg-gray-200'
-            }`}
+            className={`flex-1 py-4 rounded-2xl items-center ${canConfirm ? 'bg-blue-500' : 'bg-gray-200'}`}
             activeOpacity={0.85}
           >
             {submitting ? (
@@ -399,13 +1056,30 @@ export default function NewSaleScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Add service modal */}
+      <AddServiceModal
+        visible={showAddService}
+        onClose={() => setShowAddService(false)}
+        onAdd={addServiceItem}
+      />
+
+      {/* Success overlay */}
+      {successData && (
+        <SuccessOverlay
+          total={successData.total}
+          itemCount={successData.itemCount}
+          paymentMethod={successData.paymentMethod}
+          customDate={successData.isCustomDate ? saleDate : undefined}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   scanFrame: {
-    width: 200,
+    width: 220,
     height: 100,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.8)',

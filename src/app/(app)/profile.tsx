@@ -311,6 +311,46 @@ function SwitchTenantModal({
   );
 }
 
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function ProfileSkeleton() {
+  const box = 'bg-gray-200 rounded-lg';
+  return (
+    <SafeAreaView className="flex-1 bg-gray-50">
+      <ScrollView className="flex-1" contentContainerClassName="px-4 pt-6 pb-8">
+        <View className={`w-40 h-8 mb-6 ${box}`} />
+        {/* Avatar */}
+        <View className="items-center mb-6">
+          <View className="w-20 h-20 rounded-full bg-gray-200 mb-3" />
+          <View className={`w-32 h-5 mb-1 ${box}`} />
+          <View className={`w-24 h-4 ${box}`} />
+        </View>
+        {/* Info card */}
+        <View className="bg-white rounded-2xl px-4 shadow-sm mb-4">
+          {[0, 1, 2].map((i) => (
+            <View key={i} className="flex-row items-center gap-3 py-3.5 border-b border-gray-100">
+              <View className="w-8 h-4 bg-gray-200 rounded" />
+              <View className="flex-1 gap-1">
+                <View className={`w-16 h-3 ${box}`} />
+                <View className={`w-28 h-4 ${box}`} />
+              </View>
+            </View>
+          ))}
+        </View>
+        {/* Actions card */}
+        <View className="bg-white rounded-2xl px-4 shadow-sm mb-4">
+          {[0, 1].map((i) => (
+            <View key={i} className="flex-row items-center gap-3 py-3.5 border-b border-gray-100">
+              <View className="w-8 h-4 bg-gray-200 rounded" />
+              <View className={`flex-1 h-4 ${box}`} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
@@ -326,6 +366,8 @@ export default function ProfileScreen() {
     await signOut();
     router.replace('/(auth)/login');
   }
+
+  if (!user) return <ProfileSkeleton />;
 
   const initials = displayName ? getInitials(displayName) : '?';
   const roleLabel =
@@ -420,6 +462,9 @@ export default function ProfileScreen() {
           <LogOut size={16} color="#DC2626" />
           <Text className="text-red-600 font-semibold">Cerrar sesión</Text>
         </TouchableOpacity>
+
+        {/* App version */}
+        <Text className="text-center text-xs text-gray-300 mt-6">Inventario360 v1.0.0</Text>
       </ScrollView>
 
       {/* Modals */}

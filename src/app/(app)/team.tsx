@@ -16,12 +16,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback, useMemo } from 'react';
 import { useFocusRefresh } from '@/lib/use-focus-refresh';
-import { Search, Users, UserPlus, X } from 'lucide-react-native';
+import { Search, Users, UserPlus, X, ChevronRight } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
 import type { TeamMember } from '@/lib/types';
 
-// ─── Member card ──────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -31,21 +31,34 @@ function getInitials(name: string) {
   return (first + last).toUpperCase();
 }
 
-function MemberRow({ member }: { member: TeamMember }) {
+// ─── Member card ──────────────────────────────────────────────────────────────
+
+function MemberRow({
+  member,
+  canManage,
+  onPress,
+}: {
+  member: TeamMember;
+  canManage: boolean;
+  onPress: () => void;
+}) {
   const initials = getInitials(member.name);
   const isOwner = member.role === 'owner';
 
   return (
-    <View className="flex-row items-center px-4 py-3.5 border-b border-gray-100">
+    <TouchableOpacity
+      className="flex-row items-center px-4 py-3.5 border-b border-gray-100"
+      onPress={canManage ? onPress : undefined}
+      disabled={!canManage}
+      activeOpacity={canManage ? 0.7 : 1}
+    >
       {/* Avatar */}
       <View
         className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
           isOwner ? 'bg-blue-100' : 'bg-gray-100'
         }`}
       >
-        <Text
-          className={`text-sm font-bold ${isOwner ? 'text-blue-600' : 'text-gray-600'}`}
-        >
+        <Text className={`text-sm font-bold ${isOwner ? 'text-blue-600' : 'text-gray-600'}`}>
           {initials}
         </Text>
       </View>
@@ -58,16 +71,8 @@ function MemberRow({ member }: { member: TeamMember }) {
 
       {/* Role + status */}
       <View className="items-end gap-1">
-        <View
-          className={`px-2 py-0.5 rounded-full ${
-            isOwner ? 'bg-blue-100' : 'bg-gray-100'
-          }`}
-        >
-          <Text
-            className={`text-xs font-semibold ${
-              isOwner ? 'text-blue-700' : 'text-gray-600'
-            }`}
-          >
+        <View className={`px-2 py-0.5 rounded-full ${isOwner ? 'bg-blue-100' : 'bg-gray-100'}`}>
+          <Text className={`text-xs font-semibold ${isOwner ? 'text-blue-700' : 'text-gray-600'}`}>
             {isOwner ? 'Dueño' : 'Empleado'}
           </Text>
         </View>
@@ -77,7 +82,138 @@ function MemberRow({ member }: { member: TeamMember }) {
           </View>
         )}
       </View>
-    </View>
+
+      {canManage && <ChevronRight size={14} color="#D1D5DB" className="ml-2" />}
+    </TouchableOpacity>
+  );
+}
+
+// ─── Member Action Sheet ───────────────────────────────────────────────────────
+
+function MemberActionSheet({
+  member,
+  onClose,
+  onDone,
+}: {
+  member: TeamMember | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function changeRole(newRole: 'owner' | 'staff') {
+    if (!member) return;
+    setLoading(true);
+    try {
+      await api.patch(`/tenants/members/${member.userId}`, { role: newRole });
+      onDone();
+      onClose();
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cambiar el rol');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function confirmRemove() {
+    if (!member) return;
+    onClose();
+    Alert.alert(
+      'Eliminar miembro',
+      `¿Estás seguro de que querés eliminar a ${member.name} del equipo? Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete(`/tenants/members/${member.userId}`);
+              onDone();
+            } catch (err) {
+              Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar el miembro');
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  if (!member) return null;
+  const currentRole = member.role;
+
+  return (
+    <Modal visible={!!member} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity
+        className="flex-1"
+        style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View className="flex-1 justify-end">
+          <SafeAreaView className="bg-white rounded-t-3xl" edges={['bottom']}>
+            {/* Handle */}
+            <View className="items-center pt-3 pb-1">
+              <View className="w-10 h-1 rounded-full bg-gray-300" />
+            </View>
+
+            {/* Member info */}
+            <View className="px-4 py-3 border-b border-gray-100">
+              <Text className="text-base font-bold text-gray-900">{member.name}</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">
+                {member.email} · {currentRole === 'owner' ? 'Dueño' : 'Empleado'}
+              </Text>
+            </View>
+
+            {loading ? (
+              <View className="py-8 items-center">
+                <ActivityIndicator color="#208AEF" />
+              </View>
+            ) : (
+              <>
+                {/* Change role */}
+                {currentRole === 'staff' && (
+                  <TouchableOpacity
+                    onPress={() => void changeRole('owner')}
+                    className="px-4 py-4 border-b border-gray-50"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-base font-medium text-gray-900">Promover a dueño</Text>
+                    <Text className="text-xs text-gray-400 mt-0.5">Le dará acceso total a la app</Text>
+                  </TouchableOpacity>
+                )}
+                {currentRole === 'owner' && (
+                  <TouchableOpacity
+                    onPress={() => void changeRole('staff')}
+                    className="px-4 py-4 border-b border-gray-50"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-base font-medium text-gray-900">Cambiar a empleado</Text>
+                    <Text className="text-xs text-gray-400 mt-0.5">Limitará el acceso a los módulos habilitados</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Remove */}
+                <TouchableOpacity
+                  onPress={confirmRemove}
+                  className="px-4 py-4 border-b border-gray-50"
+                  activeOpacity={0.7}
+                >
+                  <Text className="text-base font-medium text-red-500">Eliminar del equipo</Text>
+                  <Text className="text-xs text-gray-400 mt-0.5">Revoca el acceso inmediatamente</Text>
+                </TouchableOpacity>
+
+                {/* Cancel */}
+                <TouchableOpacity onPress={onClose} className="px-4 py-4 mt-1" activeOpacity={0.7}>
+                  <Text className="text-base font-medium text-gray-400 text-center">Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <View className="h-2" />
+          </SafeAreaView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
   );
 }
 
@@ -95,22 +231,15 @@ function AddMemberModal({ visible, onClose, onSuccess }: {
   const [error, setError] = useState('');
 
   function reset() {
-    setEmail('');
-    setName('');
-    setRole('staff');
-    setError('');
+    setEmail(''); setName(''); setRole('staff'); setError('');
   }
 
   function handleClose() {
-    reset();
-    onClose();
+    reset(); onClose();
   }
 
   async function handleSubmit() {
-    if (!email.trim()) {
-      setError('El email es obligatorio');
-      return;
-    }
+    if (!email.trim()) { setError('El email es obligatorio'); return; }
     setLoading(true);
     setError('');
     try {
@@ -134,7 +263,6 @@ function AddMemberModal({ visible, onClose, onSuccess }: {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 bg-white"
       >
-        {/* Header */}
         <View className="flex-row items-center justify-between px-4 pt-6 pb-4 border-b border-gray-100">
           <Text className="text-lg font-bold text-gray-900">Agregar miembro</Text>
           <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -147,7 +275,6 @@ function AddMemberModal({ visible, onClose, onSuccess }: {
             Se enviará una invitación por email. El usuario deberá aceptarla para unirse al equipo.
           </Text>
 
-          {/* Email */}
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-1.5">Email *</Text>
             <TextInput
@@ -163,7 +290,6 @@ function AddMemberModal({ visible, onClose, onSuccess }: {
             />
           </View>
 
-          {/* Name */}
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-1.5">
               Nombre <Text className="text-gray-400 font-normal">(opcional)</Text>
@@ -178,7 +304,6 @@ function AddMemberModal({ visible, onClose, onSuccess }: {
             />
           </View>
 
-          {/* Role */}
           <View className="mb-6">
             <Text className="text-sm font-medium text-gray-700 mb-2">Rol</Text>
             <View className="flex-row gap-3">
@@ -248,7 +373,7 @@ type PendingInvitation = {
 
 export default function TeamScreen() {
   const queryClient = useQueryClient();
-  const { tenantRole } = useAuthContext();
+  const { tenantRole, user } = useAuthContext();
   const isOwner = tenantRole === 'owner';
 
   useFocusRefresh([['team-members'], ['team-invitations-pending']], 5 * 60_000);
@@ -256,6 +381,7 @@ export default function TeamScreen() {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [actionMember, setActionMember] = useState<TeamMember | null>(null);
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['team-members'],
@@ -272,9 +398,7 @@ export default function TeamScreen() {
     if (!search.trim()) return members;
     const q = search.trim().toLowerCase();
     return members.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q),
+      (m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q),
     );
   }, [members, search]);
 
@@ -324,31 +448,20 @@ export default function TeamScreen() {
         <Text className="text-xs text-gray-400">{pending.length}</Text>
       </View>
       {pending.map((inv) => (
-        <View
-          key={inv.invitationId}
-          className="flex-row items-center px-4 py-3.5 border-b border-gray-100"
-        >
-          {/* Icon */}
+        <View key={inv.invitationId} className="flex-row items-center px-4 py-3.5 border-b border-gray-100">
           <View className="w-10 h-10 rounded-full bg-amber-100 items-center justify-center mr-3">
             <Text className="text-sm font-bold text-amber-600">@</Text>
           </View>
-
-          {/* Info */}
           <View className="flex-1">
             <Text className="text-sm font-semibold text-gray-900">{inv.name}</Text>
             <Text className="text-xs text-gray-400 mt-0.5">{inv.email}</Text>
           </View>
-
-          {/* Role + status + revoke */}
           <View className="items-end gap-1.5">
             <View className="px-2 py-0.5 rounded-full bg-amber-100">
               <Text className="text-xs font-semibold text-amber-700">Pendiente</Text>
             </View>
-            <Text className="text-xs text-gray-400">
-              {inv.role === 'owner' ? 'Dueño' : 'Empleado'}
-            </Text>
+            <Text className="text-xs text-gray-400">{inv.role === 'owner' ? 'Dueño' : 'Empleado'}</Text>
           </View>
-
           <TouchableOpacity
             onPress={() => confirmRevoke(inv)}
             className="ml-3 p-2 rounded-xl bg-gray-50"
@@ -367,6 +480,13 @@ export default function TeamScreen() {
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSuccess={handleInviteSuccess}
+      />
+      <MemberActionSheet
+        member={actionMember}
+        onClose={() => setActionMember(null)}
+        onDone={() => {
+          void queryClient.invalidateQueries({ queryKey: ['team-members'] });
+        }}
       />
 
       {/* Header */}
@@ -390,7 +510,6 @@ export default function TeamScreen() {
           </Text>
         )}
 
-        {/* Search */}
         <View className="flex-row items-center bg-white border border-gray-200 rounded-xl px-3">
           <Search size={16} color="#9CA3AF" />
           <TextInput
@@ -412,13 +531,15 @@ export default function TeamScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(m) => m.membershipId}
-          renderItem={({ item }) => <MemberRow member={item} />}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void onRefresh()}
-              tintColor="#208AEF"
+          renderItem={({ item }) => (
+            <MemberRow
+              member={item}
+              canManage={isOwner && item.userId !== user?.id}
+              onPress={() => setActionMember(item)}
             />
+          )}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor="#208AEF" />
           }
           ListEmptyComponent={
             <View className="items-center justify-center py-20">
@@ -431,7 +552,6 @@ export default function TeamScreen() {
           ListFooterComponent={pendingSection}
         />
       )}
-
     </SafeAreaView>
   );
 }

@@ -20,13 +20,22 @@ type LoginResponse = {
 // Google rechaza el redirect URI exp:// que usa el simulador.
 // Se necesita un development build o production build.
 const isExpoGo =
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+  !Constants.isDevice;
 
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
 const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
 
 const googleEnabled = !!(iosClientId || androidClientId || webClientId);
+
+function friendlyError(err: unknown, fallback: string): string {
+  const msg = err instanceof Error ? err.message : '';
+  if (!msg || msg.toLowerCase().includes('could not connect') || msg.toLowerCase().includes('fetch failed') || msg.toLowerCase().includes('network')) {
+    return 'No se pudo conectar con el servidor. Verificá tu conexión.';
+  }
+  return msg || fallback;
+}
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -77,7 +86,7 @@ export default function LoginScreen() {
       }
       signIn(res.access_token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
+      setError(friendlyError(err, 'Error al iniciar sesión'));
     } finally {
       setLoading(false);
     }
@@ -95,20 +104,24 @@ export default function LoginScreen() {
       }
       signIn(res.access_token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al iniciar sesión con Google');
+      setError(friendlyError(err, 'Error al iniciar sesión con Google'));
     } finally {
       setGoogleLoading(false);
     }
   }
 
-  function handleGooglePress() {
+  async function handleGooglePress() {
     if (isExpoGo) {
       setError(
         'Google login no está disponible en Expo Go. Usá email y contraseña, o creá un development build con: eas build --profile development --platform ios',
       );
       return;
     }
-    void promptGoogleAsync();
+    try {
+      await promptGoogleAsync();
+    } catch (err) {
+      setError('No se pudo iniciar sesión con Google. Intentá de nuevo.');
+    }
   }
 
   return (
