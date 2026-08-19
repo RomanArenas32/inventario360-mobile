@@ -1,7 +1,12 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+// Android emulator uses 10.0.2.2 to reach the host machine's localhost
+const API_URL =
+  Platform.OS === 'android' && rawApiUrl.includes('localhost')
+    ? rawApiUrl.replace('localhost', '10.0.2.2')
+    : rawApiUrl;
 export const TOKEN_KEY = 'inv360_token';
 
 // Callback registrado por AuthProvider para manejar token expirado (401)

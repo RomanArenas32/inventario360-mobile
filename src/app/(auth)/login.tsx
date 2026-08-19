@@ -2,14 +2,10 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'reac
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
 import type { Membership } from '@/lib/types';
-
-// Required for expo-auth-session to complete the redirect on iOS/Android
-WebBrowser.maybeCompleteAuthSession();
 
 type LoginResponse = {
   access_token: string;

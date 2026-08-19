@@ -1,6 +1,9 @@
 import '../global.css';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
@@ -33,7 +36,7 @@ function AuthGate() {
     if (!isReady) return;
     void SplashScreen.hideAsync();
 
-    const inAuth = segments[0] === '(auth)';
+    const inAuth = segments[0] === '(auth)' || segments[0] === 'oauthredirect';
     if (!isAuthed && !inAuth) {
       router.replace('/(auth)/login');
     } else if (isAuthed && inAuth) {

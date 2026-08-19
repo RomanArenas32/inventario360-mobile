@@ -22,18 +22,6 @@
     "android": {
       "package": "com.inventario360.mobile",
       "versionCode": 1,
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "com.googleusercontent.apps.863158588704-rc8419opk306paia6puqjllku7nquhcn"
-            }
-          ],
-          "category": ["BROWSABLE", "DEFAULT"]
-        }
-      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
