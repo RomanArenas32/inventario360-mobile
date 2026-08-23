@@ -5,6 +5,8 @@ import { CheckCircle } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
 
+type RegisterTenantResponse = { ok: boolean; access_token: string };
+
 const PLAN_FEATURES = [
   'Gestión de productos e inventario',
   'Registro de ventas',
@@ -14,7 +16,7 @@ const PLAN_FEATURES = [
 
 export default function OnboardingPlanScreen() {
   const { name } = useLocalSearchParams<{ name: string }>();
-  const { reloadUser } = useAuthContext();
+  const { signIn } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,8 +24,8 @@ export default function OnboardingPlanScreen() {
     setLoading(true);
     setError('');
     try {
-      await api.post('/tenants', { name });
-      await reloadUser();
+      const res = await api.post<RegisterTenantResponse>('/auth/register-tenant', { name });
+      signIn(res.access_token);
       // AuthGate detecta hasTenant=true y redirige a (app)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear el negocio');
