@@ -28,7 +28,7 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate() {
-  const { isReady, isAuthed } = useAuthContext();
+  const { isReady, isAuthed, user } = useAuthContext();
   const segments = useSegments();
   const router = useRouter();
 
@@ -37,9 +37,14 @@ function AuthGate() {
     void SplashScreen.hideAsync();
 
     const inAuth = segments[0] === '(auth)' || segments[0] === 'oauthredirect';
+    const inOnboarding = segments[0] === '(auth)' && segments[1] === 'onboarding';
+    const hasTenant = (user?.tenants.length ?? 0) > 0;
+
     if (!isAuthed && !inAuth) {
       router.replace('/(auth)/login');
-    } else if (isAuthed && inAuth) {
+    } else if (isAuthed && !hasTenant && !inOnboarding) {
+      router.replace('/(auth)/onboarding');
+    } else if (isAuthed && hasTenant && inAuth) {
       router.replace('/(app)');
     } else if (isAuthed && !inAuth) {
       void registerPushToken();
