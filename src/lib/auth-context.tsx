@@ -29,7 +29,7 @@ type AuthContextType = {
   tenantRole: TenantRole | null;
   activeTenantId: string | null;
   user: AuthUser | null;
-  signIn: (token: string) => void;
+  signIn: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
   reloadUser: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
@@ -89,14 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void load();
   }, []);
 
-  function signIn(token: string) {
-    void setToken(token).then(async () => {
-      const payload = decodeToken(token);
-      setTenantRole((payload?.tenantRole as TenantRole) ?? null);
-      setActiveTenantId(payload?.activeTenantId ?? null);
-      setIsAuthed(true);
-      await loadMe();
-    });
+  async function signIn(token: string) {
+    await setToken(token);
+    const payload = decodeToken(token);
+    setTenantRole((payload?.tenantRole as TenantRole) ?? null);
+    setActiveTenantId(payload?.activeTenantId ?? null);
+    setIsAuthed(true);
+    await loadMe();
   }
 
   async function switchTenant(tenantId: string) {

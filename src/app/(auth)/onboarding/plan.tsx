@@ -2,8 +2,11 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { CheckCircle } from 'lucide-react-native';
-import { api } from '@/lib/api';
+import { api, setToken } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
+import type { Module } from '@/lib/types';
+
+const ALL_MODULES: Module[] = ['products', 'stock', 'sales', 'turns'];
 
 type RegisterTenantResponse = { ok: boolean; access_token: string };
 
@@ -11,11 +14,14 @@ const PLAN_FEATURES = [
   'Gestión de productos e inventario',
   'Registro de ventas',
   'Gestión de turnos',
-  'Hasta 3 empleados',
+  'Comparte tu negocio con tu equipo',
+  'Hasta 2 usuarios de tu negocio',
 ];
 
 export default function OnboardingPlanScreen() {
-  const { name } = useLocalSearchParams<{ name: string }>();
+  const { name, modules: modulesParam } = useLocalSearchParams<{ name: string; modules: string }>();
+  const selectedModules = modulesParam ? (modulesParam.split(',') as Module[]) : ALL_MODULES;
+  const isAllModules = selectedModules.length === ALL_MODULES.length;
   const { signIn } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,10 +31,16 @@ export default function OnboardingPlanScreen() {
     setError('');
     try {
       const res = await api.post<RegisterTenantResponse>('/auth/register-tenant', { name });
-      signIn(res.access_token);
+      // Set token first so the modules PATCH is authenticated
+      await setToken(res.access_token);
+      if (!isAllModules) {
+        await api.patch('/tenants/staff-modules', { modules: selectedModules });
+      }
+      await signIn(res.access_token);
       // AuthGate detecta hasTenant=true y redirige a (app)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear el negocio');
+    } finally {
       setLoading(false);
     }
   }

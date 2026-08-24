@@ -49,7 +49,7 @@ function AuthGate() {
     } else if (isAuthed && !inAuth) {
       void registerPushToken();
     }
-  }, [isReady, isAuthed, segments]);
+  }, [isReady, isAuthed, user, segments]);
 
   if (!isReady) return null;
 

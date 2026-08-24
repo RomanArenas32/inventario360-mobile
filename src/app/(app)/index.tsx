@@ -576,7 +576,7 @@ export default function DashboardScreen() {
         {!loadingProducts && noModules && (
           <View className="flex-1 items-center justify-center py-16">
             <Image
-              source={require('../../../assets/images/marca1.webp')}
+              source={require('../../../assets/images/marca1.png')}
               style={{ width: 220, height: 220 }}
               resizeMode="contain"
             />

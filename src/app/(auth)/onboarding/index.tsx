@@ -16,7 +16,7 @@ export default function OnboardingNameScreen() {
       setError('El nombre del negocio es obligatorio');
       return;
     }
-    router.push({ pathname: '/(auth)/onboarding/plan', params: { name: businessName.trim() } });
+    router.push({ pathname: '/(auth)/onboarding/modules', params: { name: businessName.trim() } });
   }
 
   return (
