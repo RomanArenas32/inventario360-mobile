@@ -63,9 +63,16 @@ export default function AppLayout() {
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
     queryFn: () => api.get<{ count: number }>('/notifications/unread-count'),
-    refetchInterval: 60_000, // poll every minute
+    refetchInterval: 60_000,
   });
-  const unreadCount = unreadData?.count ?? 0;
+
+  const { data: invitations = [] } = useQuery({
+    queryKey: ['invitations-mine'],
+    queryFn: () => api.get<{ id: string }[]>('/invitations/mine'),
+    refetchInterval: 60_000,
+  });
+
+  const unreadCount = (unreadData?.count ?? 0) + invitations.length;
 
   return (
     <Tabs

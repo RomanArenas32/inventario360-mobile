@@ -372,8 +372,6 @@ export default function ProfileScreen() {
   const initials = displayName ? getInitials(displayName) : '?';
   const roleLabel =
     tenantRole === 'owner' ? 'Dueño' : tenantRole === 'staff' ? 'Empleado' : '—';
-  const hasMultipleTenants = (user?.tenants.length ?? 0) > 1;
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       <ScrollView className="flex-1" contentContainerClassName="px-4 pt-6 pb-8">
@@ -424,19 +422,22 @@ export default function ProfileScreen() {
             <ChevronRight size={16} color="#D1D5DB" />
           </TouchableOpacity>
 
-          {hasMultipleTenants && (
-            <TouchableOpacity
-              className="flex-row items-center gap-3 py-3.5 border-b border-gray-100"
-              onPress={() => setSwitchTenantVisible(true)}
-              activeOpacity={0.6}
-            >
-              <View className="w-8 items-center">
-                <Building2 size={16} color="#9CA3AF" />
-              </View>
-              <Text className="flex-1 text-sm font-medium text-gray-900">Cambiar negocio</Text>
-              <ChevronRight size={16} color="#D1D5DB" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            className="flex-row items-center gap-3 py-3.5 border-b border-gray-100"
+            onPress={() => setSwitchTenantVisible(true)}
+            activeOpacity={0.6}
+          >
+            <View className="w-8 items-center">
+              <Building2 size={16} color="#9CA3AF" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-medium text-gray-900">Mis negocios</Text>
+              {(user?.tenants.length ?? 0) > 1 && (
+                <Text className="text-xs text-gray-400 mt-0.5">{user!.tenants.length} negocios</Text>
+              )}
+            </View>
+            <ChevronRight size={16} color="#D1D5DB" />
+          </TouchableOpacity>
 
           {tenantRole === 'owner' && (
             <TouchableOpacity

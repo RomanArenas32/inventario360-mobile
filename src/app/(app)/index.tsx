@@ -7,7 +7,7 @@ import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import {
   AlertTriangle, ScanLine, Plus, BarChart2,
   TrendingUp, TrendingDown, Sliders, Bell, ChevronRight, CheckCircle2,
-  ShoppingCart, CalendarDays, Clock, Settings2, LineChart,
+  ShoppingCart, CalendarDays, Clock, Settings2, LineChart, UserPlus,
 } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
@@ -403,6 +403,7 @@ export default function DashboardScreen() {
   useFocusRefresh([
     ['products'],
     ['notifications'],
+    ['invitations-mine'],
     ...(canStock ? [['stock-movements-recent']] : []),
     ...(canSales ? [['sales-summary', 'today'], ['sales-summary', 'yesterday']] : []),
     ...(canTurns ? [['turns', todayKey]] : []),
@@ -425,6 +426,11 @@ export default function DashboardScreen() {
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get<AppNotification[]>('/notifications'),
+  });
+
+  const { data: pendingInvitations = [] } = useQuery({
+    queryKey: ['invitations-mine'],
+    queryFn: () => api.get<{ id: string; tenantName: string; role: string }[]>('/invitations/mine'),
   });
 
   const { data: salesSummary } = useQuery({
@@ -713,6 +719,28 @@ export default function DashboardScreen() {
             onViewAll={() => router.push('/(app)/sales' as never)}
             onViewStats={() => router.push('/(app)/sales/stats' as never)}
           />
+        )}
+
+        {/* Invitaciones pendientes */}
+        {pendingInvitations.length > 0 && (
+          <TouchableOpacity
+            onPress={() => router.push('/(app)/notifications' as never)}
+            activeOpacity={0.85}
+            className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3.5 mb-4 flex-row items-center gap-3"
+          >
+            <View className="w-9 h-9 rounded-full bg-blue-100 items-center justify-center shrink-0">
+              <UserPlus size={16} color="#3B82F6" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-gray-900">
+                {pendingInvitations.length === 1
+                  ? `Invitación de ${pendingInvitations[0].tenantName}`
+                  : `${pendingInvitations.length} invitaciones pendientes`}
+              </Text>
+              <Text className="text-xs text-blue-600 mt-0.5">Toca para ver y aceptar</Text>
+            </View>
+            <ChevronRight size={14} color="#93C5FD" />
+          </TouchableOpacity>
         )}
 
         {/* Notificaciones no leídas */}
