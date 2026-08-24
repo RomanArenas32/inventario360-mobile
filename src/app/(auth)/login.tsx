@@ -1,6 +1,7 @@
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { api } from '@/lib/api';
@@ -116,101 +117,126 @@ export default function LoginScreen() {
   }
 
   return (
-    <View className="flex-1 bg-white justify-center px-6">
-      <Text className="text-3xl font-bold text-gray-900 mb-2">Inventario360</Text>
-      <Text className="text-gray-500 mb-8">Ingresá a tu cuenta</Text>
-
-      <View className="gap-4">
-        <View>
-          <Text className="text-sm font-medium text-gray-700 mb-1.5">Email</Text>
-          <TextInput
-            className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900 bg-gray-50"
-            placeholder="tu@email.com"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-          />
-        </View>
-
-        <View>
-          <Text className="text-sm font-medium text-gray-700 mb-1.5">Contraseña</Text>
-          <TextInput
-            className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900 bg-gray-50"
-            placeholder="••••••••"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-          />
-        </View>
-
-        {error ? (
-          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-            <Text className="text-sm text-red-600">{error}</Text>
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          className="bg-primary rounded-xl py-3.5 items-center mt-2"
-          onPress={() => void handleLogin()}
-          disabled={loading || googleLoading}
-          activeOpacity={0.85}
+    <SafeAreaView className="flex-1 bg-white">
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {loading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text className="text-white font-semibold text-base">Ingresar</Text>
-          )}
-        </TouchableOpacity>
+          {/* Logo */}
+          <View className="items-center justify-center pt-16 pb-10">
+            <Image
+              source={require('../../../assets/images/marca1.png')}
+              style={{ width: 200, height: 200 }}
+              resizeMode="contain"
+            />
+          </View>
 
-        {googleEnabled && (
-          <>
-            <View className="flex-row items-center gap-3 my-1">
-              <View className="flex-1 h-px bg-gray-200" />
-              <Text className="text-xs text-gray-400">o</Text>
-              <View className="flex-1 h-px bg-gray-200" />
-            </View>
+          {/* Form */}
+          <View className="flex-1 px-6">
+            <Text className="text-2xl font-bold text-gray-900 mb-1">Bienvenido</Text>
+            <Text className="text-sm text-gray-400 mb-8">Ingresá a tu cuenta para continuar</Text>
 
-            <TouchableOpacity
-              className={`border rounded-xl py-3.5 flex-row items-center justify-center gap-2 ${
-                isExpoGo
-                  ? 'border-gray-100 bg-gray-50'
-                  : 'border-gray-200 bg-white'
-              }`}
-              onPress={handleGooglePress}
-              disabled={loading || googleLoading}
-              activeOpacity={0.8}
-            >
-              {googleLoading ? (
-                <ActivityIndicator size="small" color="#4285F4" />
-              ) : (
+            <View className="gap-4">
+              <View>
+                <Text className="text-sm font-medium text-gray-700 mb-1.5">Email</Text>
+                <TextInput
+                  className="border border-gray-200 rounded-xl px-4 py-3.5 text-gray-900 bg-gray-50 text-base"
+                  placeholder="tu@email.com"
+                  placeholderTextColor="#9CA3AF"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                />
+              </View>
+
+              <View>
+                <Text className="text-sm font-medium text-gray-700 mb-1.5">Contraseña</Text>
+                <TextInput
+                  className="border border-gray-200 rounded-xl px-4 py-3.5 text-gray-900 bg-gray-50 text-base"
+                  placeholder="••••••••"
+                  placeholderTextColor="#9CA3AF"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoComplete="password"
+                />
+              </View>
+
+              {error ? (
+                <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <Text className="text-sm text-red-600">{error}</Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                className="bg-blue-500 rounded-xl py-4 items-center mt-1"
+                onPress={() => void handleLogin()}
+                disabled={loading || googleLoading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-semibold text-base">Ingresar</Text>
+                )}
+              </TouchableOpacity>
+
+              {googleEnabled && (
                 <>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '700',
-                      color: isExpoGo ? '#9CA3AF' : '#4285F4',
-                      lineHeight: 18,
-                    }}
-                  >
-                    G
-                  </Text>
-                  <Text
-                    className={`font-semibold text-base ${
-                      isExpoGo ? 'text-gray-400' : 'text-gray-700'
+                  <View className="flex-row items-center gap-3 my-1">
+                    <View className="flex-1 h-px bg-gray-200" />
+                    <Text className="text-xs text-gray-400">o</Text>
+                    <View className="flex-1 h-px bg-gray-200" />
+                  </View>
+
+                  <TouchableOpacity
+                    className={`border rounded-xl py-4 flex-row items-center justify-center gap-2.5 ${
+                      isExpoGo ? 'border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
                     }`}
+                    onPress={handleGooglePress}
+                    disabled={loading || googleLoading}
+                    activeOpacity={0.8}
                   >
-                    Continuar con Google
-                    {isExpoGo ? ' (dev build requerido)' : ''}
-                  </Text>
+                    {googleLoading ? (
+                      <ActivityIndicator size="small" color="#4285F4" />
+                    ) : (
+                      <>
+                        <Text
+                          style={{
+                            fontSize: 16,
+                            fontWeight: '700',
+                            color: isExpoGo ? '#9CA3AF' : '#4285F4',
+                            lineHeight: 20,
+                          }}
+                        >
+                          G
+                        </Text>
+                        <Text
+                          className={`font-semibold text-base ${
+                            isExpoGo ? 'text-gray-400' : 'text-gray-700'
+                          }`}
+                        >
+                          Continuar con Google
+                          {isExpoGo ? ' (dev build requerido)' : ''}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </>
               )}
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
+            </View>
+
+            <View className="h-8" />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
