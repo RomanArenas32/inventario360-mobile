@@ -17,13 +17,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tu-dominio.com"
+        "EXPO_PUBLIC_API_URL": "https://inventario360-server.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tu-dominio.com"
+        "EXPO_PUBLIC_API_URL": "https://inventario360-server.onrender.com"
       }
     }
   },
