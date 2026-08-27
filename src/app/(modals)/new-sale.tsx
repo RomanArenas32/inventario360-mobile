@@ -6,10 +6,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { X, Search, ScanLine, ShoppingCart, CheckCircle, CalendarDays, ChevronLeft, ChevronRight, Scissors, Plus, Minus } from 'lucide-react-native';
+import { X, Search, ScanLine, ShoppingCart, CheckCircle, CalendarDays, ChevronLeft, ChevronRight, Scissors, Plus, Minus, PenLine } from 'lucide-react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { api } from '@/lib/api';
 import type { Product, PaymentMethod } from '@/lib/types';
+
+type CatalogService = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  duration: number | null;
+  isActive: boolean;
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -263,15 +272,50 @@ function AddServiceModal({
   onClose: () => void;
   onAdd: (item: Omit<ServiceCartItem, 'kind'>) => void;
 }) {
+  const [mode, setMode] = useState<'catalog' | 'manual'>('catalog');
+  const [search, setSearch] = useState('');
+  // Manual form
   const [desc, setDesc] = useState('');
   const [price, setPrice] = useState('');
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
 
-  function reset() { setDesc(''); setPrice(''); setQty(1); setError(''); }
+  const { data: services = [], isLoading } = useQuery({
+    queryKey: ['services'],
+    queryFn: () => api.get<CatalogService[]>('/services'),
+    enabled: visible,
+  });
 
-  function handleAdd() {
-    if (!desc.trim()) { setError('Ingresá una descripción del servicio'); return; }
+  const activeServices = useMemo(
+    () => services.filter((s) => s.isActive),
+    [services],
+  );
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return activeServices;
+    const q = search.trim().toLowerCase();
+    return activeServices.filter((s) => s.name.toLowerCase().includes(q));
+  }, [activeServices, search]);
+
+  function reset() {
+    setMode('catalog');
+    setSearch('');
+    setDesc('');
+    setPrice('');
+    setQty(1);
+    setError('');
+  }
+
+  function handleClose() { reset(); onClose(); }
+
+  function handleSelectFromCatalog(svc: CatalogService) {
+    onAdd({ id: String(Date.now()), description: svc.name, unitPrice: svc.price, quantity: 1 });
+    reset();
+    onClose();
+  }
+
+  function handleAddManual() {
+    if (!desc.trim()) { setError('Ingresá una descripción'); return; }
     const p = parseFloat(price.replace(',', '.'));
     if (!price.trim() || isNaN(p) || p < 0) { setError('Ingresá un precio válido'); return; }
     onAdd({ id: String(Date.now()), description: desc.trim(), unitPrice: p, quantity: qty });
@@ -280,78 +324,178 @@ function AddServiceModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView className="flex-1 bg-white">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onShow={() => setMode('catalog')}>
+      <SafeAreaView className="flex-1 bg-white" edges={['bottom']}>
+        {/* Header */}
         <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
-          <TouchableOpacity onPress={() => { reset(); onClose(); }}>
+          <TouchableOpacity onPress={handleClose}>
             <X size={22} color="#6B7280" />
           </TouchableOpacity>
           <Text className="text-base font-semibold text-gray-900">Agregar servicio</Text>
-          <TouchableOpacity onPress={handleAdd}>
-            <Text className="text-blue-500 font-semibold text-base">Agregar</Text>
+          {mode === 'manual' ? (
+            <TouchableOpacity onPress={handleAddManual}>
+              <Text className="text-blue-500 font-semibold text-base">Agregar</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 60 }} />
+          )}
+        </View>
+
+        {/* Mode toggle */}
+        <View className="flex-row px-4 pt-3 pb-2 gap-2">
+          <TouchableOpacity
+            onPress={() => setMode('catalog')}
+            className={`flex-1 py-2 rounded-xl items-center border ${mode === 'catalog' ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}
+            activeOpacity={0.7}
+          >
+            <Text className={`text-xs font-semibold ${mode === 'catalog' ? 'text-purple-700' : 'text-gray-500'}`}>
+              Del catálogo
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMode('manual')}
+            className={`flex-1 py-2 rounded-xl items-center border ${mode === 'manual' ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}
+            activeOpacity={0.7}
+          >
+            <Text className={`text-xs font-semibold ${mode === 'manual' ? 'text-purple-700' : 'text-gray-500'}`}>
+              Personalizado
+            </Text>
           </TouchableOpacity>
         </View>
-        <ScrollView className="flex-1 px-4 pt-5" keyboardShouldPersistTaps="handled">
-          <Text className="text-xs text-gray-400 mb-4">
-            Servicios sin stock — útil para barbería, peluquería, reparaciones, etc.
-          </Text>
 
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-1.5">Descripción del servicio</Text>
-            <TextInput
-              className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
-              value={desc}
-              onChangeText={setDesc}
-              placeholder="Ej: Corte de cabello, Manicura..."
-              placeholderTextColor="#9CA3AF"
-              autoFocus
-              autoCapitalize="sentences"
-              maxLength={200}
-            />
-          </View>
+        {mode === 'catalog' ? (
+          <>
+            {/* Search */}
+            <View className="px-4 pb-2">
+              <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 gap-2">
+                <Search size={14} color="#9CA3AF" />
+                <TextInput
+                  className="flex-1 py-2.5 text-sm text-gray-900"
+                  placeholder="Buscar servicio..."
+                  placeholderTextColor="#9CA3AF"
+                  value={search}
+                  onChangeText={setSearch}
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
 
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-1.5">Precio unitario</Text>
-            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4">
-              <Text className="text-gray-400 mr-1">$</Text>
+            {isLoading ? (
+              <View className="flex-1 items-center justify-center">
+                <ActivityIndicator size="large" color="#7C3AED" />
+              </View>
+            ) : filtered.length === 0 ? (
+              <View className="flex-1 items-center justify-center px-8">
+                <Scissors size={36} color="#E5E7EB" />
+                <Text className="text-gray-400 text-sm mt-3 text-center">
+                  {search ? 'Sin resultados' : 'No hay servicios en el catálogo'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setSearch(''); setMode('manual'); }}
+                  className="mt-4 bg-purple-50 border border-purple-200 px-5 py-2.5 rounded-xl"
+                  activeOpacity={0.7}
+                >
+                  <Text className="text-purple-700 text-xs font-semibold">Agregar uno personalizado</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={filtered}
+                keyExtractor={(s) => s.id}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
+                renderItem={({ item: svc }) => (
+                  <TouchableOpacity
+                    onPress={() => handleSelectFromCatalog(svc)}
+                    activeOpacity={0.7}
+                    className="flex-row items-center py-3.5 border-b border-gray-100"
+                  >
+                    <View className="w-9 h-9 rounded-xl bg-purple-50 items-center justify-center mr-3">
+                      <Scissors size={16} color="#7C3AED" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-gray-900">{svc.name}</Text>
+                      {svc.description ? (
+                        <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{svc.description}</Text>
+                      ) : null}
+                    </View>
+                    <Text className="text-sm font-bold text-purple-600 ml-3">
+                      ${Math.round(svc.price).toLocaleString('es-AR')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListFooterComponent={
+                  <TouchableOpacity
+                    onPress={() => setMode('manual')}
+                    className="flex-row items-center gap-2 py-3.5 mt-1"
+                    activeOpacity={0.7}
+                  >
+                    <PenLine size={14} color="#9CA3AF" />
+                    <Text className="text-sm text-gray-400">Agregar servicio personalizado</Text>
+                  </TouchableOpacity>
+                }
+              />
+            )}
+          </>
+        ) : (
+          <ScrollView className="flex-1 px-4 pt-4" keyboardShouldPersistTaps="handled">
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-1.5">Descripción</Text>
               <TextInput
-                className="flex-1 py-3 text-gray-900 text-base"
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0"
+                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
+                value={desc}
+                onChangeText={setDesc}
+                placeholder="Ej: Corte de cabello, Manicura..."
                 placeholderTextColor="#9CA3AF"
-                keyboardType="decimal-pad"
+                autoFocus
+                autoCapitalize="sentences"
+                maxLength={200}
               />
             </View>
-          </View>
 
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-1.5">Cantidad</Text>
-            <View className="flex-row items-center gap-4">
-              <TouchableOpacity
-                onPress={() => setQty((q) => Math.max(1, q - 1))}
-                className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
-                activeOpacity={0.7}
-              >
-                <Minus size={16} color="#374151" />
-              </TouchableOpacity>
-              <Text className="text-lg font-bold text-gray-900 w-8 text-center">{qty}</Text>
-              <TouchableOpacity
-                onPress={() => setQty((q) => q + 1)}
-                className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
-                activeOpacity={0.7}
-              >
-                <Plus size={16} color="#374151" />
-              </TouchableOpacity>
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-1.5">Precio unitario</Text>
+              <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4">
+                <Text className="text-gray-400 mr-1">$</Text>
+                <TextInput
+                  className="flex-1 py-3 text-gray-900 text-base"
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="decimal-pad"
+                />
+              </View>
             </View>
-          </View>
 
-          {error ? (
-            <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <Text className="text-sm text-red-600">{error}</Text>
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-1.5">Cantidad</Text>
+              <View className="flex-row items-center gap-4">
+                <TouchableOpacity
+                  onPress={() => setQty((q) => Math.max(1, q - 1))}
+                  className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                  activeOpacity={0.7}
+                >
+                  <Minus size={16} color="#374151" />
+                </TouchableOpacity>
+                <Text className="text-lg font-bold text-gray-900 w-8 text-center">{qty}</Text>
+                <TouchableOpacity
+                  onPress={() => setQty((q) => q + 1)}
+                  className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                  activeOpacity={0.7}
+                >
+                  <Plus size={16} color="#374151" />
+                </TouchableOpacity>
+              </View>
             </View>
-          ) : null}
-        </ScrollView>
+
+            {error ? (
+              <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <Text className="text-sm text-red-600">{error}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -540,9 +684,10 @@ export default function NewSaleScreen() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [saleDate, setSaleDate] = useState<Date>(new Date());
   const [discountPct, setDiscountPct] = useState('');
+  const [surchargePct, setSurchargePct] = useState('');
   const [notes, setNotes] = useState('');
   const [received, setReceived] = useState('');
-  const [showExtras, setShowExtras] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [stockWarningId, setStockWarningId] = useState<string | null>(null);
@@ -654,8 +799,10 @@ export default function NewSaleScreen() {
   const serviceSubtotal = serviceItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const subtotal = productSubtotal + serviceSubtotal;
   const discountNum = Math.min(100, Math.max(0, parseFloat(discountPct) || 0));
+  const surchargeNum = Math.min(100, Math.max(0, parseFloat(surchargePct) || 0));
   const discountAmount = discountNum > 0 ? Math.round(subtotal * discountNum) / 100 : 0;
-  const total = subtotal - discountAmount;
+  const surchargeAmount = surchargeNum > 0 ? Math.round(subtotal * surchargeNum) / 100 : 0;
+  const total = subtotal - discountAmount + surchargeAmount;
   const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0) + serviceItems.reduce((sum, i) => sum + i.quantity, 0);
   const receivedNum = parseFloat(received) || 0;
   const change = paymentMethod === 'cash' && receivedNum > 0 ? receivedNum - total : null;
@@ -736,6 +883,7 @@ export default function NewSaleScreen() {
         ],
         paymentMethod,
         ...(discountNum > 0 ? { discountPct: discountNum } : {}),
+        ...(surchargeNum > 0 ? { surchargePct: surchargeNum } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         ...(isCustomDate ? { customDate: saleDate.toISOString() } : {}),
       });
@@ -932,56 +1080,6 @@ export default function NewSaleScreen() {
 
       {/* Payment + Total + Confirm */}
       <View className="border-t border-gray-100 px-4 pt-3 pb-4 bg-white">
-        {/* Date + Extras toggle */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <CalendarPicker value={saleDate} onChange={setSaleDate} />
-          <TouchableOpacity
-            onPress={() => setShowExtras((v) => !v)}
-            className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border ${showExtras ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}
-            activeOpacity={0.7}
-          >
-            <Text className={`text-xs font-semibold ${showExtras ? 'text-blue-600' : 'text-gray-500'}`}>
-              {discountNum > 0 || notes.trim() ? '• Extras' : 'Extras'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Extras panel */}
-        {showExtras && (
-          <View className="bg-gray-50 rounded-2xl p-3 mb-3 gap-3">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-xs font-medium text-gray-600 w-20">Descuento %</Text>
-              <View className="flex-1 flex-row items-center bg-white border border-gray-200 rounded-xl px-3">
-                <TextInput
-                  className="flex-1 py-2 text-sm text-gray-900"
-                  value={discountPct}
-                  onChangeText={(t) => { if (/^\d{0,3}$/.test(t)) setDiscountPct(t); }}
-                  keyboardType="number-pad"
-                  placeholder="0"
-                  placeholderTextColor="#9CA3AF"
-                />
-                <Text className="text-xs text-gray-400">%</Text>
-              </View>
-              {discountAmount > 0 && (
-                <Text className="text-xs font-semibold text-red-500">−{formatCurrency(discountAmount)}</Text>
-              )}
-            </View>
-            <View>
-              <Text className="text-xs font-medium text-gray-600 mb-1">Notas</Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900"
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Observaciones de la venta..."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
-                maxLength={255}
-              />
-            </View>
-          </View>
-        )}
 
         {/* Payment method */}
         <View className="flex-row gap-2 mb-3">
@@ -1001,29 +1099,98 @@ export default function NewSaleScreen() {
           ))}
         </View>
 
-        {/* Change calculator (cash only) */}
+        {/* Cash calculator */}
         {paymentMethod === 'cash' && (
-          <View className="flex-row items-center gap-2 mb-3">
-            <View className="flex-1 flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3">
-              <Text className="text-xs text-gray-400 mr-1">Recibido $</Text>
+          <View className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 mb-3">
+            <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Efectivo recibido</Text>
+            <View className="flex-row items-center gap-3">
+              <View className="flex-1 flex-row items-center bg-white border border-gray-200 rounded-xl px-3">
+                <Text className="text-base font-semibold text-gray-400 mr-1">$</Text>
+                <TextInput
+                  className="flex-1 py-2.5 text-xl font-bold text-gray-900"
+                  value={received}
+                  onChangeText={setReceived}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor="#D1D5DB"
+                />
+              </View>
+              {change !== null && (
+                <View className={`items-center px-4 py-2 rounded-xl ${change >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                  <Text className="text-xs text-gray-400 mb-0.5">Vuelto</Text>
+                  <Text className={`text-lg font-bold ${change >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                    {formatCurrency(Math.abs(change))}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Descuento + Recargo */}
+        <View className="flex-row gap-2 mb-3">
+          <View className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+            <Text className="text-xs text-gray-400 mb-1">Descuento %</Text>
+            <View className="flex-row items-center">
               <TextInput
-                className="flex-1 py-2 text-sm text-gray-900 font-semibold"
-                value={received}
-                onChangeText={setReceived}
-                keyboardType="decimal-pad"
+                className="flex-1 text-sm font-bold text-gray-900"
+                value={discountPct}
+                onChangeText={(t) => { if (/^\d{0,3}$/.test(t)) setDiscountPct(t); }}
+                keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor="#9CA3AF"
               />
+              <Text className="text-xs text-gray-400">%</Text>
             </View>
-            {change !== null && (
-              <View className={`flex-row items-center gap-1 px-3 py-2 rounded-xl ${change >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                <Text className="text-xs text-gray-500">Vuelto</Text>
-                <Text className={`text-sm font-bold ${change >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  {formatCurrency(Math.abs(change))}
-                </Text>
-              </View>
+            {discountAmount > 0 && (
+              <Text className="text-xs font-semibold text-green-600 mt-0.5">−{formatCurrency(discountAmount)}</Text>
             )}
           </View>
+          <View className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+            <Text className="text-xs text-gray-400 mb-1">Recargo %</Text>
+            <View className="flex-row items-center">
+              <TextInput
+                className="flex-1 text-sm font-bold text-gray-900"
+                value={surchargePct}
+                onChangeText={(t) => { if (/^\d{0,3}$/.test(t)) setSurchargePct(t); }}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor="#9CA3AF"
+              />
+              <Text className="text-xs text-gray-400">%</Text>
+            </View>
+            {surchargeAmount > 0 && (
+              <Text className="text-xs font-semibold text-orange-500 mt-0.5">+{formatCurrency(surchargeAmount)}</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Date + Notes */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <CalendarPicker value={saleDate} onChange={setSaleDate} />
+          <TouchableOpacity
+            onPress={() => setShowNotes((v) => !v)}
+            className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border ${showNotes || notes.trim() ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}
+            activeOpacity={0.7}
+          >
+            <Text className={`text-xs font-semibold ${showNotes || notes.trim() ? 'text-blue-600' : 'text-gray-500'}`}>
+              {notes.trim() ? '• Notas' : 'Notas'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {showNotes && (
+          <TextInput
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 mb-3"
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Observaciones de la venta..."
+            placeholderTextColor="#9CA3AF"
+            multiline
+            numberOfLines={2}
+            textAlignVertical="top"
+            maxLength={255}
+          />
         )}
 
         {error ? (
@@ -1034,9 +1201,13 @@ export default function NewSaleScreen() {
 
         <View className="flex-row items-center gap-3">
           <View>
-            <Text className="text-xs text-gray-400">{discountAmount > 0 ? 'Con descuento' : 'Total'}</Text>
+            <Text className="text-xs text-gray-400">
+              {discountAmount > 0 && surchargeAmount === 0 ? 'Con descuento' :
+               surchargeAmount > 0 && discountAmount === 0 ? 'Con recargo' :
+               discountAmount > 0 && surchargeAmount > 0 ? 'Con ajustes' : 'Total'}
+            </Text>
             <Text className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</Text>
-            {discountAmount > 0 && (
+            {(discountAmount > 0 || surchargeAmount > 0) && (
               <Text className="text-xs text-gray-400 line-through">{formatCurrency(subtotal)}</Text>
             )}
           </View>

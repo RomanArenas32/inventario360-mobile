@@ -30,10 +30,11 @@ type ModuleDef = {
 };
 
 const MODULES: ModuleDef[] = [
-  { id: 'products', label: 'Productos', description: 'Catálogo, precios y categorías' },
-  { id: 'stock',    label: 'Stock',     description: 'Inventario y movimientos' },
-  { id: 'sales',    label: 'Ventas',    description: 'Registro de ventas y facturación' },
-  { id: 'turns',    label: 'Turnos',    description: 'Agenda y gestión de reservas' },
+  { id: 'products',  label: 'Productos',  description: 'Catálogo, precios y categorías' },
+  { id: 'stock',     label: 'Stock',      description: 'Inventario y movimientos' },
+  { id: 'sales',     label: 'Ventas',     description: 'Registro de ventas y facturación' },
+  { id: 'turns',     label: 'Turnos',     description: 'Agenda y gestión de reservas' },
+  { id: 'services',  label: 'Servicios',  description: 'Catálogo de servicios con precios' },
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────

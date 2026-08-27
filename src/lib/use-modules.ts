@@ -21,9 +21,10 @@ export function useModules() {
     isOwner,
     staffModules,
     can,
-    canProducts: can('products'),
-    canStock:    can('stock'),
-    canTurns:    can('turns'),
-    canSales:    can('sales'),
+    canProducts:  can('products'),
+    canStock:     can('stock'),
+    canTurns:     can('turns'),
+    canSales:     can('sales'),
+    canServices:  can('services'),
   };
 }

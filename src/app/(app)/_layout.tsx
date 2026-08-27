@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Package, BarChart2, Users, User, Bell, ShoppingCart, CalendarDays } from 'lucide-react-native';
+import { LayoutDashboard, Users, User, Bell } from 'lucide-react-native';
 import { useAuthContext } from '@/lib/auth-context';
 import { useModules } from '@/lib/use-modules';
 import { useQuery } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ const RELOAD_INTERVAL_MS = 5 * 60 * 1000; // refresh at most every 5 min on fore
 
 export default function AppLayout() {
   const { reloadUser } = useAuthContext();
-  const { isOwner, canProducts, canStock, canTurns, canSales } = useModules();
+  const { isOwner } = useModules();
   const lastReloadRef = useRef<number>(Date.now());
   const pushRegistered = useRef(false);
 
@@ -56,10 +56,6 @@ export default function AppLayout() {
     void registerPushToken();
   }, []);
 
-  const hideProducts = !canProducts;
-  const hideStock = !canStock;
-  const hideTurns = !canTurns;
-
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
     queryFn: () => api.get<{ count: number }>('/notifications/unread-count'),
@@ -87,40 +83,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: 'Inicio',
           tabBarIcon: ({ color, size }) => <LayoutDashboard size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="products"
-        options={{
-          title: 'Productos',
-          href: hideProducts ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Package size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="stock/index"
-        options={{
-          title: 'Stock',
-          href: hideStock ? null : undefined,
-          tabBarIcon: ({ color, size }) => <BarChart2 size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="sales"
-        options={{
-          title: 'Ventas',
-          href: canSales ? undefined : null,
-          tabBarIcon: ({ color, size }) => <ShoppingCart size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="turns"
-        options={{
-          title: 'Turnos',
-          href: hideTurns ? null : undefined,
-          tabBarIcon: ({ color, size }) => <CalendarDays size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -147,6 +111,13 @@ export default function AppLayout() {
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
+
+      {/* Módulos — accesibles vía router.push, sin tab */}
+      <Tabs.Screen name="products" options={{ href: null }} />
+      <Tabs.Screen name="stock/index" options={{ href: null }} />
+      <Tabs.Screen name="sales" options={{ href: null }} />
+      <Tabs.Screen name="turns" options={{ href: null }} />
+      <Tabs.Screen name="services/index" options={{ href: null }} />
 
       {/* Pantallas sin tab */}
       <Tabs.Screen name="categories/index" options={{ href: null }} />

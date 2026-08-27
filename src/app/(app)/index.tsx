@@ -1,13 +1,15 @@
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, Alert, ActivityIndicator, type ViewStyle } from 'react-native';
+import LogoColor from '../../../assets/images/logo-color.svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState, useCallback, useMemo } from 'react';
 import { useFocusRefresh } from '@/lib/use-focus-refresh';
 import {
-  AlertTriangle, ScanLine, Plus, BarChart2,
+  AlertTriangle, ScanLine, BarChart2,
   TrendingUp, TrendingDown, Sliders, Bell, ChevronRight, CheckCircle2,
   ShoppingCart, CalendarDays, Clock, Settings2, LineChart, UserPlus,
+  Package, Scissors,
 } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
@@ -281,7 +283,7 @@ function TurnsWidget({
   return (
     <View className="mb-5">
       {/* Hero turn */}
-      {heroTurn ? (
+      {heroTurn && (
         <View className={`rounded-2xl p-4 mb-3 ${isActive ? 'bg-amber-500' : 'bg-blue-500'}`}>
           <View className="flex-row items-center justify-between mb-2">
             <Text className={`text-xs font-semibold ${isActive ? 'text-amber-100' : 'text-blue-100'}`}>
@@ -329,19 +331,6 @@ function TurnsWidget({
               </TouchableOpacity>
             )}
           </View>
-        </View>
-      ) : (
-        <View className="bg-white rounded-2xl px-4 py-4 mb-3 border border-gray-100 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
-            <CalendarDays size={20} color="#9CA3AF" />
-            <View>
-              <Text className="text-sm font-semibold text-gray-900">Sin turnos hoy</Text>
-              <Text className="text-xs text-gray-400 mt-0.5">Agenda libre</Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text className="text-xs text-blue-500 font-medium">Ver agenda</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -394,7 +383,7 @@ function TurnsWidget({
 
 export default function DashboardScreen() {
   const { user } = useAuthContext();
-  const { isOwner, canProducts, canStock, canTurns, canSales } = useModules();
+  const { isOwner, canProducts, canStock, canTurns, canSales, canServices } = useModules();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -530,57 +519,119 @@ export default function DashboardScreen() {
   }
 
   const allGood = canStock && sinStock.length === 0 && stockBajo.length === 0 && activeProducts.length > 0;
-  const noModules = !canProducts && !canStock && !canTurns && !canSales;
+  const noModules = !canProducts && !canStock && !canTurns && !canSales && !canServices;
   const isServiceBusiness = canTurns;
+
+  const MODULE_STRIP = [
+    {
+      label: 'Productos',
+      icon: <Package size={22} color="#208AEF" />,
+      bg: '#EFF6FF' as ViewStyle['backgroundColor'],
+      route: '/(app)/products',
+      visible: canProducts,
+    },
+    {
+      label: 'Stock',
+      icon: <BarChart2 size={22} color="#7C3AED" />,
+      bg: '#F5F3FF' as ViewStyle['backgroundColor'],
+      route: '/(app)/stock/index',
+      visible: canStock,
+    },
+    {
+      label: 'Ventas',
+      icon: <ShoppingCart size={22} color="#059669" />,
+      bg: '#ECFDF5' as ViewStyle['backgroundColor'],
+      route: '/(app)/sales',
+      visible: canSales,
+    },
+    {
+      label: 'Turnos',
+      icon: <CalendarDays size={22} color="#D97706" />,
+      bg: '#FFFBEB' as ViewStyle['backgroundColor'],
+      route: '/(app)/turns',
+      visible: canTurns,
+    },
+    {
+      label: 'Servicios',
+      icon: <Scissors size={22} color="#DB2777" />,
+      bg: '#FDF2F8' as ViewStyle['backgroundColor'],
+      route: '/(app)/services/index',
+      visible: canServices,
+    },
+  ].filter((m) => m.visible);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
+      {/* Header — fijo, no hace scroll */}
+      <View className="flex-row items-center justify-between px-4 pt-5 pb-3 bg-gray-50">
+        <View className="flex-row items-center gap-2.5">
+          <LogoColor width={48} height={48} />
+          <View>
+            <Text className="text-xl font-bold text-gray-900">Hola, {firstName}</Text>
+            <Text className="text-xs text-gray-400 mt-0.5">
+              {user?.tenantName ? user.tenantName : todayStr}
+            </Text>
+          </View>
+        </View>
+        {isOwner && (
+          <TouchableOpacity
+            onPress={() => router.push('/(modals)/business-settings' as never)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="p-2 bg-white rounded-xl border border-gray-200"
+            activeOpacity={0.7}
+          >
+            <Settings2 size={18} color="#6B7280" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Strip de módulos — fijo, no hace scroll vertical */}
+      {!noModules && MODULE_STRIP.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="bg-gray-50 border-b border-gray-100"
+          style={{ flexGrow: 0, flexShrink: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 10 }}
+        >
+          {MODULE_STRIP.map((mod) => (
+            <TouchableOpacity
+              key={mod.label}
+              onPress={() => router.push(mod.route as never)}
+              activeOpacity={0.75}
+              className="items-center gap-1.5"
+            >
+              <View
+                className="w-14 h-14 rounded-2xl items-center justify-center"
+                style={{ backgroundColor: mod.bg }}
+              >
+                {mod.icon}
+              </View>
+              <Text className="text-xs font-medium text-gray-600">{mod.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-4 pt-6 pb-10"
+        className="flex-1 bg-gray-50"
+        contentContainerClassName="px-4 pt-5 pb-10"
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor="#208AEF" />
         }
       >
-        {/* Header */}
-        <View className="flex-row items-start justify-between mb-5">
-          <View className="flex-row items-center gap-2.5">
-            <Image
-              source={require('../../../assets/images/logo.webp')}
-              style={{ width: 36, height: 36 }}
-              resizeMode="contain"
-            />
-            <View>
-              <Text className="text-2xl font-bold text-gray-900">Hola, {firstName}</Text>
-              <Text className="text-sm text-gray-400 mt-0.5">{todayStr}</Text>
-              {user?.tenantName ? (
-                <Text className="text-xs text-gray-400 mt-0.5">{user.tenantName}</Text>
-              ) : null}
-            </View>
-          </View>
-          {isOwner && (
-            <TouchableOpacity
-              onPress={() => router.push('/(modals)/business-settings' as never)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              className="mt-1 p-2 bg-white rounded-xl border border-gray-200"
-              activeOpacity={0.7}
-            >
-              <Settings2 size={18} color="#6B7280" />
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* Loading state */}
         {loadingProducts && canProducts && (
-          <View className="flex-1 items-center justify-center py-20">
+          <View className="items-center justify-center py-16">
             <ActivityIndicator size="large" color="#208AEF" />
           </View>
         )}
 
         {/* Empty state — no modules */}
         {!loadingProducts && noModules && (
-          <View className="flex-1 items-center justify-center py-16">
+          <View className="items-center justify-center py-16">
             <Image
               source={require('../../../assets/images/marca1.png')}
               style={{ width: 220, height: 220 }}
@@ -602,8 +653,8 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* SERVICE BUSINESSES: Turns widget first */}
-        {!loadingProducts && !noModules && isServiceBusiness && (
+        {/* SERVICE BUSINESSES: Turns widget — solo si hay turnos o hay hero */}
+        {!loadingProducts && !noModules && isServiceBusiness && todayTurns.length > 0 && (
           <TurnsWidget
             turns={todayTurns}
             todayKey={todayKey}

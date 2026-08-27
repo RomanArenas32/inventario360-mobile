@@ -12,10 +12,11 @@ type ModuleDef = {
 };
 
 const MODULES: ModuleDef[] = [
-  { id: 'products', icon: '📦', label: 'Productos',  description: 'Catálogo de productos y precios' },
-  { id: 'stock',    icon: '📊', label: 'Stock',      description: 'Control de inventario y movimientos' },
-  { id: 'sales',    icon: '💰', label: 'Ventas',     description: 'Registro de ventas y cobros' },
-  { id: 'turns',    icon: '📅', label: 'Turnos',     description: 'Agenda y gestión de reservas' },
+  { id: 'products',  icon: '📦', label: 'Productos',  description: 'Catálogo de productos y precios' },
+  { id: 'stock',     icon: '📊', label: 'Stock',      description: 'Control de inventario y movimientos' },
+  { id: 'sales',     icon: '💰', label: 'Ventas',     description: 'Registro de ventas y cobros' },
+  { id: 'turns',     icon: '📅', label: 'Turnos',     description: 'Agenda y gestión de reservas' },
+  { id: 'services',  icon: '✂️', label: 'Servicios',  description: 'Catálogo de servicios con precios' },
 ];
 
 const ALL_MODULE_IDS = MODULES.map((m) => m.id);

@@ -133,7 +133,7 @@ export type AuthUser = {
   tenantRole: TenantRole | null;
 };
 
-export type Module = 'products' | 'categories' | 'stock' | 'turns' | 'sales';
+export type Module = 'products' | 'categories' | 'stock' | 'turns' | 'sales' | 'services';
 
 export type TenantSummary = {
   id: string;
