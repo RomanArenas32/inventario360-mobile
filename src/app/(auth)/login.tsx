@@ -39,6 +39,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuthContext();
 
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -62,6 +64,13 @@ export default function LoginScreen() {
     void handleGoogleLogin(accessToken);
   }, [response]);
 
+  function switchMode(next: 'login' | 'signup') {
+    setMode(next);
+    setError('');
+    setName('');
+    setPassword('');
+  }
+
   async function handleLogin() {
     if (!email.trim() || !password) return;
     setLoading(true);
@@ -72,13 +81,31 @@ export default function LoginScreen() {
         password,
       });
       if (res.memberships.length > 1) {
-        signIn(res.access_token);
+        await signIn(res.access_token);
         router.replace('/(auth)/select-tenant');
         return;
       }
-      signIn(res.access_token);
+      await signIn(res.access_token);
     } catch (err) {
       setError(friendlyError(err, 'Error al iniciar sesión'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSignup() {
+    if (!name.trim() || !email.trim() || !password) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.post<LoginResponse>('/auth/signup', {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      });
+      await signIn(res.access_token);
+    } catch (err) {
+      setError(friendlyError(err, 'Error al crear la cuenta'));
     } finally {
       setLoading(false);
     }
@@ -90,11 +117,11 @@ export default function LoginScreen() {
     try {
       const res = await api.post<LoginResponse>('/auth/google/mobile', { accessToken });
       if (res.memberships.length > 1) {
-        signIn(res.access_token);
+        await signIn(res.access_token);
         router.replace('/(auth)/select-tenant');
         return;
       }
-      signIn(res.access_token);
+      await signIn(res.access_token);
     } catch (err) {
       setError(friendlyError(err, 'Error al iniciar sesión con Google'));
     } finally {
@@ -115,6 +142,8 @@ export default function LoginScreen() {
       setError('No se pudo iniciar sesión con Google. Intentá de nuevo.');
     }
   }
+
+  const isSignup = mode === 'signup';
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -138,10 +167,31 @@ export default function LoginScreen() {
 
           {/* Form */}
           <View className="flex-1 px-6">
-            <Text className="text-2xl font-bold text-gray-900 mb-1">Bienvenido</Text>
-            <Text className="text-sm text-gray-400 mb-8">Ingresá a tu cuenta para continuar</Text>
+            <Text className="text-2xl font-bold text-gray-900 mb-1">
+              {isSignup ? 'Crear cuenta' : 'Bienvenido'}
+            </Text>
+            <Text className="text-sm text-gray-400 mb-8">
+              {isSignup
+                ? 'Completá tus datos para registrarte'
+                : 'Ingresá a tu cuenta para continuar'}
+            </Text>
 
             <View className="gap-4">
+              {isSignup && (
+                <View>
+                  <Text className="text-sm font-medium text-gray-700 mb-1.5">Nombre</Text>
+                  <TextInput
+                    className="border border-gray-200 rounded-xl px-4 py-3.5 text-gray-900 bg-gray-50 text-base"
+                    placeholder="Tu nombre"
+                    placeholderTextColor="#9CA3AF"
+                    value={name}
+                    onChangeText={setName}
+                    autoCapitalize="words"
+                    autoComplete="name"
+                  />
+                </View>
+              )}
+
               <View>
                 <Text className="text-sm font-medium text-gray-700 mb-1.5">Email</Text>
                 <TextInput
@@ -165,7 +215,7 @@ export default function LoginScreen() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
-                  autoComplete="password"
+                  autoComplete={isSignup ? 'new-password' : 'password'}
                 />
               </View>
 
@@ -177,18 +227,35 @@ export default function LoginScreen() {
 
               <TouchableOpacity
                 className="bg-blue-500 rounded-xl py-4 items-center mt-1"
-                onPress={() => void handleLogin()}
+                onPress={() => void (isSignup ? handleSignup() : handleLogin())}
                 disabled={loading || googleLoading}
                 activeOpacity={0.85}
               >
                 {loading ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-white font-semibold text-base">Ingresar</Text>
+                  <Text className="text-white font-semibold text-base">
+                    {isSignup ? 'Crear cuenta' : 'Ingresar'}
+                  </Text>
                 )}
               </TouchableOpacity>
 
-              {googleEnabled && (
+              {/* Mode toggle */}
+              <TouchableOpacity
+                onPress={() => switchMode(isSignup ? 'login' : 'signup')}
+                disabled={loading || googleLoading}
+                className="items-center py-2"
+                activeOpacity={0.7}
+              >
+                <Text className="text-sm text-gray-500">
+                  {isSignup ? '¿Ya tenés cuenta? ' : '¿No tenés cuenta? '}
+                  <Text className="text-blue-500 font-semibold">
+                    {isSignup ? 'Ingresar' : 'Crear cuenta'}
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+
+              {!isSignup && googleEnabled && (
                 <>
                   <View className="flex-row items-center gap-3 my-1">
                     <View className="flex-1 h-px bg-gray-200" />

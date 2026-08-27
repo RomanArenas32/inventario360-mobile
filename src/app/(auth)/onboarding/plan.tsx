@@ -1,8 +1,8 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CheckCircle } from 'lucide-react-native';
-import { api, setToken } from '@/lib/api';
+import { api, setToken, getToken, withSuppressUnauthorized } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
 import type { Module } from '@/lib/types';
 
@@ -22,7 +22,8 @@ export default function OnboardingPlanScreen() {
   const { name, modules: modulesParam } = useLocalSearchParams<{ name: string; modules: string }>();
   const selectedModules = modulesParam ? (modulesParam.split(',') as Module[]) : ALL_MODULES;
   const isAllModules = selectedModules.length === ALL_MODULES.length;
-  const { signIn } = useAuthContext();
+  const { signIn, signOut } = useAuthContext();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -30,7 +31,15 @@ export default function OnboardingPlanScreen() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<RegisterTenantResponse>('/auth/register-tenant', { name });
+      const storedToken = await getToken();
+      console.log('[plan] token en SecureStore:', storedToken ? `${storedToken.slice(0, 30)}...` : 'NULL');
+      if (!storedToken) {
+        setError('Sin sesión activa. Cerrá y volvé a loguearte.');
+        return;
+      }
+      const res = await withSuppressUnauthorized(() =>
+        api.post<RegisterTenantResponse>('/auth/register-tenant', { name }),
+      );
       // Set token first so the modules PATCH is authenticated
       await setToken(res.access_token);
       if (!isAllModules) {
@@ -39,6 +48,7 @@ export default function OnboardingPlanScreen() {
       await signIn(res.access_token);
       // AuthGate detecta hasTenant=true y redirige a (app)
     } catch (err) {
+      console.log('[plan] ERROR register-tenant:', err);
       setError(err instanceof Error ? err.message : 'No se pudo crear el negocio');
     } finally {
       setLoading(false);
@@ -77,8 +87,17 @@ export default function OnboardingPlanScreen() {
         </View>
 
         {error ? (
-          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 gap-3">
             <Text className="text-sm text-red-600">{error}</Text>
+            <TouchableOpacity
+              onPress={() => void signOut()}
+              className="bg-red-100 border border-red-300 rounded-lg py-2.5 px-4 items-center"
+              activeOpacity={0.7}
+            >
+              <Text className="text-sm font-semibold text-red-700">
+                Cerrar sesión e intentar de nuevo
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </View>

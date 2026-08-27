@@ -40,7 +40,7 @@ function AuthGate() {
     const inOnboarding = segments[0] === '(auth)' && segments[1] === 'onboarding';
     const hasTenant = (user?.tenants.length ?? 0) > 0;
 
-    if (!isAuthed && !inAuth) {
+    if (!isAuthed) {
       router.replace('/(auth)/login');
     } else if (isAuthed && !hasTenant && !inOnboarding) {
       router.replace('/(auth)/onboarding');

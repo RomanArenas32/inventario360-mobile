@@ -122,7 +122,6 @@ export default function AppLayout() {
       {/* Pantallas sin tab */}
       <Tabs.Screen name="categories/index" options={{ href: null }} />
       <Tabs.Screen name="stock/history" options={{ href: null }} />
-      <Tabs.Screen name="turns/history" options={{ href: null }} />
     </Tabs>
   );
 }

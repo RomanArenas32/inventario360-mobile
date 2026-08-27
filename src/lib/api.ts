@@ -15,6 +15,13 @@ export function registerUnauthorizedHandler(cb: () => void) {
   onUnauthorizedCallback = cb;
 }
 
+// Cuando está en true, los 401 no disparan clearAuth (ej: durante loadMe inicial)
+let suppressUnauthorized = false;
+export function withSuppressUnauthorized<T>(fn: () => Promise<T>): Promise<T> {
+  suppressUnauthorized = true;
+  return fn().finally(() => { suppressUnauthorized = false; });
+}
+
 export async function getToken(): Promise<string | null> {
   if (Platform.OS === 'web') return localStorage.getItem(TOKEN_KEY);
   return SecureStore.getItemAsync(TOKEN_KEY);
@@ -49,7 +56,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const backendMsg = Array.isArray(json.message) ? json.message[0] : json.message;
       if (backendMsg && backendMsg !== 'Unauthorized') message = backendMsg;
     } catch {}
-    onUnauthorizedCallback?.();
+    if (!suppressUnauthorized) onUnauthorizedCallback?.();
     throw new Error(message);
   }
 

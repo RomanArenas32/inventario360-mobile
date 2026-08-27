@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { decodeCurrentToken, isAuthenticated, removeToken, setToken, decodeToken } from './auth';
-import { api, registerUnauthorizedHandler } from './api';
+import { api, registerUnauthorizedHandler, withSuppressUnauthorized } from './api';
 import type { TenantRole, Module, TenantSummary } from './types';
 
 type MeResponse = {
@@ -47,7 +47,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadMe = useCallback(async () => {
     try {
-      const me = await api.get<MeResponse>('/auth/me');
+      // withSuppressUnauthorized evita que un 401 en /auth/me borre el token
+      // (útil durante el signIn inicial, donde ya sabemos que el token es válido)
+      const me = await withSuppressUnauthorized(() => api.get<MeResponse>('/auth/me'));
       setUser({
         id: me.id,
         name: me.name,
@@ -58,12 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tenants: me.tenants ?? [],
       });
     } catch {
-      await clearAuth();
+      // Falla silenciosa: el token sigue válido, el usuario continuará en onboarding
     }
   }, []);
 
   async function clearAuth() {
-    await removeToken();
+    try { await removeToken(); } catch { /* ignorar error de keychain */ }
     setIsAuthed(false);
     setTenantRole(null);
     setActiveTenantId(null);
