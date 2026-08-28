@@ -17,7 +17,10 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://inventario360-server.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://inventario360-server.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "863158588704-c3toibq3ibepvhsrunql44tav1vq2vtd.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "863158588704-kje1j93mtknqsfc037fs3h475h1n8ipk.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "863158588704-rc8419opk306paia6puqjllku7nquhcn.apps.googleusercontent.com"
       }
     },
     "production": {
