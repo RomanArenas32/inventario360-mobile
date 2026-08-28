@@ -47,12 +47,16 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [, response, promptGoogleAsync] = Google.useAuthRequest({
-    iosClientId,
-    androidClientId,
-    webClientId,
-    clientId: iosClientId ?? androidClientId ?? webClientId,
-  });
+  const [, response, promptGoogleAsync] = Google.useAuthRequest(
+    googleEnabled
+      ? {
+          iosClientId,
+          androidClientId,
+          webClientId,
+          clientId: iosClientId ?? androidClientId ?? webClientId,
+        }
+      : null,
+  );
 
   useEffect(() => {
     if (response?.type !== 'success') return;
