@@ -42,7 +42,7 @@ function AuthGate() {
 
     if (!isAuthed) {
       router.replace('/(auth)/login');
-    } else if (isAuthed && !hasTenant && !inOnboarding) {
+    } else if (isAuthed && user !== null && !hasTenant && !inOnboarding) {
       router.replace('/(auth)/onboarding');
     } else if (isAuthed && hasTenant && inAuth) {
       router.replace('/(app)');
