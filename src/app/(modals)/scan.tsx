@@ -1,8 +1,7 @@
-import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { X, ScanLine } from 'lucide-react-native';
 import { api } from '@/lib/api';
@@ -15,57 +14,60 @@ export default function ScanScreen() {
   const isProductMode = mode === 'product';
   const [permission, requestPermission] = useCameraPermissions();
   const scanning = useRef(false);
-  const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const { data: products = [] } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => api.get<Product[]>('/products'),
-  });
-
-  function handleBarcode({ data }: { data: string }) {
+  async function handleBarcode({ data }: { data: string }) {
     if (scanning.current) return;
     scanning.current = true;
-    setScannedCode(data);
+    setLoading(true);
 
-    const product = products.find(
-      (p) => p.code?.trim().toLowerCase() === data.trim().toLowerCase(),
-    );
+    try {
+      const product = await api.get<Product | null>(`/products/by-code?code=${encodeURIComponent(data)}`);
 
-    if (product) {
-      if (isProductMode) {
-        router.replace(`/(app)/products/${product.id}` as never);
+      if (product) {
+        if (isProductMode) {
+          router.replace(`/(app)/products/${product.id}` as never);
+        } else {
+          editStore.setStockProductId(product.id);
+          router.replace('/(modals)/stock-movement' as never);
+        }
       } else {
-        editStore.setStockProductId(product.id);
-        router.replace('/(modals)/stock-movement' as never);
-      }
-    } else {
-      Alert.alert(
-        'Producto no encontrado',
-        `No hay ningún producto con el código "${data}".`,
-        [
-          {
-            text: 'Escanear otro',
-            onPress: () => {
-              setScannedCode(null);
-              scanning.current = false;
+        Alert.alert(
+          'Producto no encontrado',
+          `No hay ningún producto con el código "${data}".`,
+          [
+            {
+              text: 'Escanear otro',
+              onPress: () => {
+                setLoading(false);
+                scanning.current = false;
+              },
             },
+            {
+              text: 'Cerrar',
+              style: 'cancel',
+              onPress: () => router.back(),
+            },
+          ],
+        );
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo verificar el código. Intentá de nuevo.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setLoading(false);
+            scanning.current = false;
           },
-          {
-            text: 'Cerrar',
-            style: 'cancel',
-            onPress: () => router.back(),
-          },
-        ],
-      );
+        },
+      ]);
     }
   }
 
-  // Permission not determined yet
   if (!permission) {
     return <View className="flex-1 bg-black" />;
   }
 
-  // Permission denied
   if (!permission.granted) {
     return (
       <SafeAreaView className="flex-1 bg-black items-center justify-center px-8">
@@ -100,10 +102,9 @@ export default function ScanScreen() {
         style={StyleSheet.absoluteFill}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
-        onBarcodeScanned={scannedCode ? undefined : handleBarcode}
+        onBarcodeScanned={loading ? undefined : (e) => void handleBarcode(e)}
       />
 
-      {/* Overlay */}
       <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {/* Close button */}
         <View className="flex-row justify-end px-4 pt-4">
@@ -119,15 +120,22 @@ export default function ScanScreen() {
         {/* Viewfinder */}
         <View className="flex-1 items-center justify-center">
           <View style={styles.viewfinder}>
-            {/* Corner accents */}
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
           </View>
-          <Text className="text-white text-sm mt-4 opacity-80">
-            Apuntá al código de barras del producto
-          </Text>
+
+          {loading ? (
+            <View className="mt-6 flex-row items-center gap-2">
+              <ActivityIndicator color="white" size="small" />
+              <Text className="text-white text-sm opacity-80">Buscando producto...</Text>
+            </View>
+          ) : (
+            <Text className="text-white text-sm mt-4 opacity-80">
+              Apuntá al código de barras del producto
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     </View>
@@ -150,32 +158,8 @@ const styles = StyleSheet.create({
     height: CORNER,
     borderColor: 'white',
   },
-  topLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: THICKNESS,
-    borderLeftWidth: THICKNESS,
-    borderTopLeftRadius: 4,
-  },
-  topRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: THICKNESS,
-    borderRightWidth: THICKNESS,
-    borderTopRightRadius: 4,
-  },
-  bottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: THICKNESS,
-    borderLeftWidth: THICKNESS,
-    borderBottomLeftRadius: 4,
-  },
-  bottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: THICKNESS,
-    borderRightWidth: THICKNESS,
-    borderBottomRightRadius: 4,
-  },
+  topLeft:    { top: 0,    left: 0,  borderTopWidth: THICKNESS,    borderLeftWidth: THICKNESS,  borderTopLeftRadius: 4 },
+  topRight:   { top: 0,    right: 0, borderTopWidth: THICKNESS,    borderRightWidth: THICKNESS, borderTopRightRadius: 4 },
+  bottomLeft: { bottom: 0, left: 0,  borderBottomWidth: THICKNESS, borderLeftWidth: THICKNESS,  borderBottomLeftRadius: 4 },
+  bottomRight:{ bottom: 0, right: 0, borderBottomWidth: THICKNESS, borderRightWidth: THICKNESS, borderBottomRightRadius: 4 },
 });

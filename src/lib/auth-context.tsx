@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { decodeCurrentToken, isAuthenticated, removeToken, setToken, decodeToken } from './auth';
 import { api, registerUnauthorizedHandler, withSuppressUnauthorized } from './api';
 import type { TenantRole, Module, TenantSummary } from './types';
@@ -39,6 +40,7 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [isReady, setIsReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const [tenantRole, setTenantRole] = useState<TenantRole | null>(null);
@@ -109,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const payload = decodeToken(res.access_token);
     setTenantRole((payload?.tenantRole as TenantRole) ?? null);
     setActiveTenantId(payload?.activeTenantId ?? null);
+    queryClient.clear();
     await loadMe();
   }
 

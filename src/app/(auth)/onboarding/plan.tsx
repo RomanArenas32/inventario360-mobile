@@ -19,7 +19,7 @@ const PLAN_FEATURES = [
 ];
 
 export default function OnboardingPlanScreen() {
-  const { name, modules: modulesParam } = useLocalSearchParams<{ name: string; modules: string }>();
+  const { name, modules: modulesParam, phone } = useLocalSearchParams<{ name: string; modules: string; phone?: string }>();
   const selectedModules = modulesParam ? (modulesParam.split(',') as Module[]) : ALL_MODULES;
   const isAllModules = selectedModules.length === ALL_MODULES.length;
   const { signIn, signOut } = useAuthContext();
@@ -32,13 +32,12 @@ export default function OnboardingPlanScreen() {
     setError('');
     try {
       const storedToken = await getToken();
-      console.log('[plan] token en SecureStore:', storedToken ? `${storedToken.slice(0, 30)}...` : 'NULL');
       if (!storedToken) {
         setError('Sin sesión activa. Cerrá y volvé a loguearte.');
         return;
       }
       const res = await withSuppressUnauthorized(() =>
-        api.post<RegisterTenantResponse>('/auth/register-tenant', { name }),
+        api.post<RegisterTenantResponse>('/auth/register-tenant', { name, phone: phone || undefined }),
       );
       // Set token first so the modules PATCH is authenticated
       await setToken(res.access_token);
@@ -48,7 +47,6 @@ export default function OnboardingPlanScreen() {
       await signIn(res.access_token);
       // AuthGate detecta hasTenant=true y redirige a (app)
     } catch (err) {
-      console.log('[plan] ERROR register-tenant:', err);
       setError(err instanceof Error ? err.message : 'No se pudo crear el negocio');
     } finally {
       setLoading(false);

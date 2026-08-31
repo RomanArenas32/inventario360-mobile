@@ -28,7 +28,7 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate() {
-  const { isReady, isAuthed, user } = useAuthContext();
+  const { isReady, isAuthed, activeTenantId, user } = useAuthContext();
   const segments = useSegments();
   const router = useRouter();
 
@@ -38,18 +38,21 @@ function AuthGate() {
 
     const inAuth = segments[0] === '(auth)' || segments[0] === 'oauthredirect';
     const inOnboarding = segments[0] === '(auth)' && segments[1] === 'onboarding';
+    const inSelectTenant = segments[0] === '(auth)' && segments[1] === 'select-tenant';
     const hasTenant = (user?.tenants.length ?? 0) > 0;
 
     if (!isAuthed) {
       router.replace('/(auth)/login');
     } else if (isAuthed && user !== null && !hasTenant && !inOnboarding) {
       router.replace('/(auth)/onboarding');
-    } else if (isAuthed && hasTenant && inAuth) {
+    } else if (isAuthed && hasTenant && !activeTenantId && !inSelectTenant) {
+      router.replace('/(auth)/select-tenant');
+    } else if (isAuthed && hasTenant && activeTenantId && inAuth) {
       router.replace('/(app)');
     } else if (isAuthed && !inAuth) {
       void registerPushToken();
     }
-  }, [isReady, isAuthed, user, segments]);
+  }, [isReady, isAuthed, activeTenantId, user, segments]);
 
   if (!isReady) return null;
 

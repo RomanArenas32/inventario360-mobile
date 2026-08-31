@@ -23,7 +23,7 @@ const ALL_MODULE_IDS = MODULES.map((m) => m.id);
 
 export default function OnboardingModulesScreen() {
   const router = useRouter();
-  const { name } = useLocalSearchParams<{ name: string }>();
+  const { name, phone } = useLocalSearchParams<{ name: string; phone?: string }>();
   const [selected, setSelected] = useState<Module[]>(ALL_MODULE_IDS);
 
   function toggle(id: Module) {
@@ -35,7 +35,7 @@ export default function OnboardingModulesScreen() {
   function handleContinue() {
     router.push({
       pathname: '/(auth)/onboarding/plan',
-      params: { name, modules: selected.join(',') },
+      params: { name, modules: selected.join(','), phone: phone ?? '' },
     });
   }
 

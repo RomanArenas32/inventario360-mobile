@@ -114,13 +114,13 @@ export default function AppLayout() {
 
       {/* Módulos — accesibles vía router.push, sin tab */}
       <Tabs.Screen name="products" options={{ href: null }} />
-      <Tabs.Screen name="stock/index" options={{ href: null }} />
+      <Tabs.Screen name="stock" options={{ href: null }} />
       <Tabs.Screen name="sales" options={{ href: null }} />
       <Tabs.Screen name="turns" options={{ href: null }} />
-      <Tabs.Screen name="services/index" options={{ href: null }} />
+      <Tabs.Screen name="services" options={{ href: null }} />
 
       {/* Pantallas sin tab */}
-      <Tabs.Screen name="categories/index" options={{ href: null }} />
+      <Tabs.Screen name="categories" options={{ href: null }} />
       <Tabs.Screen name="stock/history" options={{ href: null }} />
     </Tabs>
   );

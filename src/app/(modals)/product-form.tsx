@@ -1,12 +1,13 @@
 import {
   View, Text, TextInput, ScrollView, TouchableOpacity,
-  Switch, Modal, FlatList, ActivityIndicator,
+  Switch, Modal, FlatList, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, useMemo } from 'react';
-import { ChevronDown, X, Check, Search } from 'lucide-react-native';
+import { useState, useMemo, useRef } from 'react';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ChevronDown, X, Check, Search, ScanLine } from 'lucide-react-native';
 import { api } from '@/lib/api';
 import { editStore } from '@/lib/edit-store';
 import type { Category, Product } from '@/lib/types';
@@ -154,6 +155,26 @@ export default function ProductFormScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const scannerBusy = useRef(false);
+
+  async function handleOpenScanner() {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
+    }
+    scannerBusy.current = false;
+    setScannerOpen(true);
+  }
+
+  function handleCodeScanned({ data }: { data: string }) {
+    if (scannerBusy.current) return;
+    scannerBusy.current = true;
+    setScannerOpen(false);
+    setForm((f) => ({ ...f, code: data.trim() }));
+  }
+
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get<Category[]>('/categories'),
@@ -229,14 +250,23 @@ export default function ProductFormScreen() {
         </Field>
 
         <Field label="Código">
-          <TextInput
-            className={`${inputCls} font-mono`}
-            value={form.code}
-            onChangeText={(v) => set('code', v)}
-            placeholder="Ej: 7790001"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
-          />
+          <View className="flex-row gap-2">
+            <TextInput
+              className={`${inputCls} flex-1 font-mono`}
+              value={form.code}
+              onChangeText={(v) => set('code', v)}
+              placeholder="Ej: 7790001"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              onPress={() => void handleOpenScanner()}
+              className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 items-center justify-center"
+              activeOpacity={0.7}
+            >
+              <ScanLine size={20} color="#208AEF" />
+            </TouchableOpacity>
+          </View>
         </Field>
 
         <Field label="Categoría">
@@ -342,6 +372,53 @@ export default function ProductFormScreen() {
 
         <View className="h-8" />
       </ScrollView>
+
+      {/* Inline barcode scanner */}
+      <Modal visible={scannerOpen} animationType="slide" statusBarTranslucent>
+        <View style={StyleSheet.absoluteFill}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'qr', 'upc_a', 'upc_e'] }}
+            onBarcodeScanned={handleCodeScanned}
+          />
+          <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            <View className="flex-row justify-end px-4 pt-4">
+              <TouchableOpacity
+                onPress={() => setScannerOpen(false)}
+                className="bg-black/50 rounded-full p-2"
+                activeOpacity={0.8}
+              >
+                <X size={22} color="white" />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-1 items-center justify-center">
+              <View style={scanStyles.viewfinder}>
+                <View style={[scanStyles.corner, scanStyles.topLeft]} />
+                <View style={[scanStyles.corner, scanStyles.topRight]} />
+                <View style={[scanStyles.corner, scanStyles.bottomLeft]} />
+                <View style={[scanStyles.corner, scanStyles.bottomRight]} />
+              </View>
+              <Text className="text-white text-sm mt-4 opacity-80">
+                Apuntá al código de barras del producto
+              </Text>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const VIEWFINDER = 240;
+const CORNER = 24;
+const THICKNESS = 3;
+
+const scanStyles = StyleSheet.create({
+  viewfinder: { width: VIEWFINDER, height: VIEWFINDER, position: 'relative' },
+  corner: { position: 'absolute', width: CORNER, height: CORNER, borderColor: 'white' },
+  topLeft:     { top: 0,    left: 0,  borderTopWidth: THICKNESS,    borderLeftWidth: THICKNESS,  borderTopLeftRadius: 4 },
+  topRight:    { top: 0,    right: 0, borderTopWidth: THICKNESS,    borderRightWidth: THICKNESS, borderTopRightRadius: 4 },
+  bottomLeft:  { bottom: 0, left: 0,  borderBottomWidth: THICKNESS, borderLeftWidth: THICKNESS,  borderBottomLeftRadius: 4 },
+  bottomRight: { bottom: 0, right: 0, borderBottomWidth: THICKNESS, borderRightWidth: THICKNESS, borderBottomRightRadius: 4 },
+});

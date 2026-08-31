@@ -534,7 +534,7 @@ export default function DashboardScreen() {
       label: 'Stock',
       icon: <BarChart2 size={22} color="#7C3AED" />,
       bg: '#F5F3FF' as ViewStyle['backgroundColor'],
-      route: '/(app)/stock/index',
+      route: '/(app)/stock',
       visible: canStock,
     },
     {
@@ -555,7 +555,7 @@ export default function DashboardScreen() {
       label: 'Servicios',
       icon: <Scissors size={22} color="#DB2777" />,
       bg: '#FDF2F8' as ViewStyle['backgroundColor'],
-      route: '/(app)/services/index',
+      route: '/(app)/services',
       visible: canServices,
     },
   ].filter((m) => m.visible);
@@ -679,7 +679,7 @@ export default function DashboardScreen() {
               className={`flex-1 rounded-2xl p-3.5 border ${
                 sinStock.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
               }`}
-              onPress={() => router.push('/(app)/stock/index' as never)}
+              onPress={() => router.push('/(app)/stock' as never)}
               activeOpacity={0.7}
             >
               <Text className={`text-xs font-medium mb-1 ${sinStock.length > 0 ? 'text-red-400' : 'text-gray-400'}`}>
@@ -693,7 +693,7 @@ export default function DashboardScreen() {
               className={`flex-1 rounded-2xl p-3.5 border ${
                 stockBajo.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'
               }`}
-              onPress={() => router.push('/(app)/stock/index' as never)}
+              onPress={() => router.push('/(app)/stock' as never)}
               activeOpacity={0.7}
             >
               <Text className={`text-xs font-medium mb-1 ${stockBajo.length > 0 ? 'text-amber-400' : 'text-gray-400'}`}>
@@ -834,7 +834,7 @@ export default function DashboardScreen() {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => router.push('/(app)/stock/index' as never)}
+                onPress={() => router.push('/(app)/stock' as never)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text className="text-xs text-red-500 font-medium">Ver todos</Text>
@@ -852,7 +852,7 @@ export default function DashboardScreen() {
               {sinStock.length > 4 && (
                 <TouchableOpacity
                   className="flex-row items-center justify-center py-3 gap-1"
-                  onPress={() => router.push('/(app)/stock/index' as never)}
+                  onPress={() => router.push('/(app)/stock' as never)}
                 >
                   <Text className="text-xs text-red-500 font-medium">Ver {sinStock.length - 4} más</Text>
                   <ChevronRight size={12} color="#EF4444" />
@@ -873,7 +873,7 @@ export default function DashboardScreen() {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => router.push('/(app)/stock/index' as never)}
+                onPress={() => router.push('/(app)/stock' as never)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text className="text-xs text-amber-600 font-medium">Ver todos</Text>
@@ -891,7 +891,7 @@ export default function DashboardScreen() {
               {stockBajo.length > 4 && (
                 <TouchableOpacity
                   className="flex-row items-center justify-center py-3 gap-1"
-                  onPress={() => router.push('/(app)/stock/index' as never)}
+                  onPress={() => router.push('/(app)/stock' as never)}
                 >
                   <Text className="text-xs text-amber-600 font-medium">Ver {stockBajo.length - 4} más</Text>
                   <ChevronRight size={12} color="#D97706" />
