@@ -325,7 +325,7 @@ function AddServiceModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onShow={() => setMode('catalog')}>
-      <SafeAreaView className="flex-1 bg-white" edges={['bottom']}>
+      <SafeAreaView className="flex-1 bg-white" edges={['top', 'bottom']}>
         {/* Header */}
         <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
           <TouchableOpacity onPress={handleClose}>
@@ -915,7 +915,7 @@ export default function NewSaleScreen() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={['bottom']}>
+    <SafeAreaView className="flex-1 bg-white" edges={['top', 'bottom']}>
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
         <TouchableOpacity
