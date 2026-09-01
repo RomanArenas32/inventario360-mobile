@@ -47,12 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  const loadMe = useCallback(async () => {
+  const loadMe = useCallback(async (): Promise<AuthUser | null> => {
     try {
       // withSuppressUnauthorized evita que un 401 en /auth/me borre el token
       // (útil durante el signIn inicial, donde ya sabemos que el token es válido)
       const me = await withSuppressUnauthorized(() => api.get<MeResponse>('/auth/me'));
-      setUser({
+      const authUser: AuthUser = {
         id: me.id,
         name: me.name,
         email: me.email,
@@ -60,9 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tenantName: me.tenant?.name ?? null,
         staffModules: me.tenant?.staffModules ?? null,
         tenants: me.tenants ?? [],
-      });
+      };
+      setUser(authUser);
+      return authUser;
     } catch {
-      // Falla silenciosa: el token sigue válido, el usuario continuará en onboarding
+      return null;
     }
   }, []);
 
@@ -81,7 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenantRole((payload?.tenantRole as TenantRole) ?? null);
       setActiveTenantId(payload?.activeTenantId ?? null);
       setIsAuthed(true);
-      await loadMe();
+      const loadedUser = await loadMe();
+      if (!loadedUser) {
+        // /auth/me falló (token expirado o inválido) → cerrar sesión
+        await clearAuth();
+      }
     } else {
       await clearAuth();
     }
