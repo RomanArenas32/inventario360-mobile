@@ -2,6 +2,7 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   Alert, RefreshControl, ActivityIndicator,
 } from 'react-native';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -206,6 +207,11 @@ export default function ProductsScreen() {
   const [categorySearch, setCategorySearch] = useState('');
   const [refreshingCategories, setRefreshingCategories] = useState(false);
 
+  // Delete confirm state
+  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [deleteCategory, setDeleteCategory] = useState<Category | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const { data: products = [], isLoading: loadingProducts } = useQuery({
     queryKey: ['products', { productSearch, stockFilter }],
     queryFn: () => {
@@ -291,43 +297,33 @@ export default function ProductsScreen() {
     router.push('/(modals)/category-form' as never);
   }
 
-  function confirmDeleteProduct(product: Product) {
-    Alert.alert(
-      'Eliminar producto',
-      `¿Eliminar "${product.name}"? Esta acción no se puede deshacer.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            void api.delete(`/products/${product.id}`).then(() => {
-              void queryClient.invalidateQueries({ queryKey: ['products'] });
-            });
-          },
-        },
-      ],
-    );
+  async function handleDeleteProduct() {
+    if (!deleteProduct) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/products/${deleteProduct.id}`);
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar');
+    } finally {
+      setDeleting(false);
+      setDeleteProduct(null);
+    }
   }
 
-  function confirmDeleteCategory(category: Category) {
-    Alert.alert(
-      'Eliminar categoría',
-      `¿Eliminar "${category.name}"? Los productos con esta categoría quedarán sin categoría.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            void api.delete(`/categories/${category.id}`).then(() => {
-              void queryClient.invalidateQueries({ queryKey: ['categories'] });
-              void queryClient.invalidateQueries({ queryKey: ['products'] });
-            });
-          },
-        },
-      ],
-    );
+  async function handleDeleteCategory() {
+    if (!deleteCategory) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/categories/${deleteCategory.id}`);
+      void queryClient.invalidateQueries({ queryKey: ['categories'] });
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar');
+    } finally {
+      setDeleting(false);
+      setDeleteCategory(null);
+    }
   }
 
   return (
@@ -474,7 +470,7 @@ export default function ProductsScreen() {
                   isOwner={isOwner}
                   onPress={() => router.push(`/(app)/products/${item.id}` as never)}
                   onEdit={() => openEditProduct(item)}
-                  onDelete={() => confirmDeleteProduct(item)}
+                  onDelete={() => setDeleteProduct(item)}
                 />
               )}
             />
@@ -527,13 +523,34 @@ export default function ProductsScreen() {
                     setActiveTab('products');
                   }}
                   onEdit={() => openEditCategory(item)}
-                  onDelete={() => confirmDeleteCategory(item)}
+                  onDelete={() => setDeleteCategory(item)}
                 />
               )}
             />
           )}
         </>
       )}
+      <ConfirmDialog
+        visible={!!deleteProduct}
+        title="Eliminar producto"
+        message={deleteProduct ? `¿Eliminar "${deleteProduct.name}"? Esta acción no se puede deshacer.` : undefined}
+        confirmLabel="Eliminar"
+        destructive
+        loading={deleting}
+        onConfirm={() => void handleDeleteProduct()}
+        onCancel={() => setDeleteProduct(null)}
+      />
+
+      <ConfirmDialog
+        visible={!!deleteCategory}
+        title="Eliminar categoría"
+        message={deleteCategory ? `¿Eliminar "${deleteCategory.name}"? Los productos quedarán sin categoría.` : undefined}
+        confirmLabel="Eliminar"
+        destructive
+        loading={deleting}
+        onConfirm={() => void handleDeleteCategory()}
+        onCancel={() => setDeleteCategory(null)}
+      />
     </SafeAreaView>
   );
 }

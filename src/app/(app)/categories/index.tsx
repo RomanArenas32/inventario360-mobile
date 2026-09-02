@@ -2,6 +2,7 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   Alert, RefreshControl, ActivityIndicator,
 } from 'react-native';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -63,6 +64,8 @@ export default function CategoriesScreen() {
 
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: categories = [], isLoading } = useQuery({
     queryKey: ['categories', { search }],
@@ -88,24 +91,19 @@ export default function CategoriesScreen() {
     router.push('/(modals)/category-form' as never);
   }
 
-  function confirmDelete(category: Category) {
-    Alert.alert(
-      'Eliminar categoría',
-      `¿Eliminar "${category.name}"? Los productos con esta categoría quedarán sin categoría.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            void api.delete(`/categories/${category.id}`).then(() => {
-              void queryClient.invalidateQueries({ queryKey: ['categories'] });
-              void queryClient.invalidateQueries({ queryKey: ['products'] });
-            });
-          },
-        },
-      ],
-    );
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/categories/${deleteTarget.id}`);
+      void queryClient.invalidateQueries({ queryKey: ['categories'] });
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   }
 
   return (
@@ -165,11 +163,21 @@ export default function CategoriesScreen() {
               category={item}
               isOwner={isOwner}
               onEdit={() => openEdit(item)}
-              onDelete={() => confirmDelete(item)}
+              onDelete={() => setDeleteTarget(item)}
             />
           )}
         />
       )}
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        title="Eliminar categoría"
+        message={deleteTarget ? `¿Eliminar "${deleteTarget.name}"? Los productos quedarán sin categoría.` : undefined}
+        confirmLabel="Eliminar"
+        destructive
+        loading={deleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </SafeAreaView>
   );
 }

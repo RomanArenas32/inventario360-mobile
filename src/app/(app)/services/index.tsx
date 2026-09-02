@@ -3,6 +3,7 @@ import {
   ActivityIndicator, ScrollView, RefreshControl, Modal,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
@@ -74,7 +75,7 @@ function ServiceFormModal({
       presentationStyle="pageSheet"
       onShow={handleOpen}
     >
-      <SafeAreaView className="flex-1 bg-white" edges={['bottom']}>
+      <SafeAreaView className="flex-1 bg-white" edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           className="flex-1"
@@ -195,6 +196,7 @@ export default function ServicesScreen() {
   const [search, setSearch] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<Service | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: services = [], isLoading } = useQuery({
@@ -222,8 +224,8 @@ export default function ServicesScreen() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/services/${id}`),
-    onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar'),
+    onSuccess: () => { invalidate(); setDeleteTarget(null); },
+    onError: (err) => { setDeleteTarget(null); Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo eliminar'); },
   });
 
   const onRefresh = useCallback(async () => {
@@ -248,14 +250,7 @@ export default function ServicesScreen() {
   }
 
   function handleDelete(service: Service) {
-    Alert.alert(
-      'Eliminar servicio',
-      `¿Eliminar "${service.name}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar', style: 'destructive', onPress: () => deleteMutation.mutate(service.id) },
-      ],
-    );
+    setDeleteTarget(service);
   }
 
   function openCreate() {
@@ -397,6 +392,19 @@ export default function ServicesScreen() {
         onClose={() => { setModalVisible(false); setEditing(null); }}
         onSave={handleSave}
         saving={isSaving}
+      />
+
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        title="Eliminar servicio"
+        message={deleteTarget ? `¿Eliminar "${deleteTarget.name}"?` : undefined}
+        confirmLabel="Eliminar"
+        destructive
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
       />
     </SafeAreaView>
   );
